@@ -1,0 +1,1238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Store Staff Scheduler</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --panel:#ffffff; --ink:#16181d; --muted:#6b7280; --line:#e3e6ea;
+    --accent:#2563eb; --accent-soft:#eff4ff;
+    --work:#0f9d58; --work-bg:#e8f5ee;
+    --off:#9aa1ab; --off-bg:#f2f3f5;
+    --warn:#b45309; --warn-bg:#fef4e6;
+    --bad:#c62828; --bad-bg:#fdecec;
+    --radius:10px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+  button{font:inherit;cursor:pointer}
+  input,select,textarea{font:inherit;color:inherit}
+
+  #stickytop{position:sticky;top:0;z-index:20;background:var(--panel);box-shadow:0 1px 0 rgba(0,0,0,.03)}
+  header.topbar{
+    background:var(--panel);border-bottom:1px solid var(--line);
+    padding:10px 20px;display:flex;gap:14px;align-items:center;flex-wrap:wrap;
+  }
+  .brand{font-weight:650;font-size:16px;letter-spacing:-.2px;margin-right:8px}
+  .brand small{display:block;font-weight:400;color:var(--muted);font-size:11px}
+  .spacer{flex:1}
+  .field{display:flex;flex-direction:column;gap:3px}
+  .field label{font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)}
+  .field input,.field select{padding:6px 8px;border:1px solid var(--line);border-radius:7px;background:#fff}
+  .btn{padding:8px 14px;border-radius:8px;border:1px solid var(--line);background:#fff}
+  .btn:hover{border-color:#c9ced6}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+  .btn.primary:hover{background:#1d4ed8}
+  .btn.sm{padding:4px 9px;font-size:12px;border-radius:6px}
+  .btn.danger{color:var(--bad);border-color:#f2c9c9;background:#fff}
+
+  nav.tabs{display:flex;gap:2px;padding:0 20px;background:var(--panel);border-bottom:1px solid var(--line)}
+  nav.tabs button{background:none;border:none;padding:11px 14px;color:var(--muted);font-weight:550;border-bottom:2px solid transparent}
+  nav.tabs button.active{color:var(--accent);border-bottom-color:var(--accent)}
+  nav.tabs .count{background:var(--off-bg);border-radius:20px;padding:1px 7px;font-size:11px;margin-left:6px;color:var(--muted)}
+
+  main{padding:20px;max-width:1500px;margin:0 auto}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:16px}
+  .panel h2{margin:0 0 4px;font-size:14px;letter-spacing:-.1px}
+  .panelhead{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
+  .addbar{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;background:var(--accent-soft);
+          border:1px solid #d7e3fb;border-radius:9px;padding:10px 12px;margin-bottom:14px}
+  .addbar .field select,.addbar .field input{background:#fff}
+  .addbar .field label{color:#3b6bd4}
+  .panel p.hint{margin:0 0 14px;color:var(--muted);font-size:12.5px}
+  .row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
+  .split{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start}
+  .split > *{min-width:0}   /* let the wide schedule table scroll inside its own box, not stretch the page */
+  
+  /* schedule grid */
+  .gridwrap{overflow-x:auto;max-width:100%;border:1px solid var(--line);border-radius:8px;background:#fff}
+  table.grid{border-collapse:separate;border-spacing:0;width:100%;font-size:12.5px}
+  table.grid th,table.grid td{border-bottom:1px solid var(--line);border-right:1px solid var(--line);padding:0;text-align:center;white-space:nowrap}
+  table.grid th.day{padding:6px 4px;font-weight:600;min-width:52px;background:#fbfcfd}
+  table.grid th.day.we{background:var(--accent-soft)}
+  table.grid th.day span{display:block;font-size:10px;font-weight:500;color:var(--muted)}
+  table.grid th.namecol,table.grid td.namecol{
+    position:sticky;left:0;background:#fff;text-align:left;padding:7px 10px;min-width:170px;z-index:2;border-right:1px solid var(--line)
+  }
+  table.grid thead th.namecol{background:#fbfcfd;z-index:3}
+  table.grid td.cell{cursor:pointer;height:34px;font-weight:600}
+  td.cell.work{background:var(--work-bg);color:var(--work)}
+  td.cell.off{background:var(--off-bg);color:var(--off)}
+  td.cell.forced{background:#e3efff;color:#1d4ed8}
+  td.cell.override{background:var(--warn-bg);color:var(--warn)}
+  td.cell.denied{background:var(--bad-bg);color:var(--bad)}
+  td.cell.sel{outline:2px solid var(--accent);outline-offset:-2px}
+  tr.totals td{background:#fbfcfd;font-weight:600;font-size:11.5px;padding:6px 0}
+  tr.totals td.bad{background:var(--bad-bg);color:var(--bad)}
+  .namecol .role{font-size:11px;color:var(--muted);font-weight:400}
+  .chip{display:inline-block;font-size:10px;padding:1px 6px;border-radius:20px;background:var(--accent-soft);color:var(--accent);margin-left:6px;vertical-align:1px}
+
+  .legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;font-size:11.5px;color:var(--muted)}
+  .legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+
+  /* explanation panel */
+  .exp{position:sticky;top:calc(var(--topbarH, 120px) + 16px)}
+  .exp .who{font-weight:650;font-size:15px}
+  .exp .when{color:var(--muted);font-size:12px;margin-bottom:10px}
+  .status{display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600;margin-bottom:12px}
+  .status.work{background:var(--work-bg);color:var(--work)}
+  .status.off{background:var(--off-bg);color:#555}
+  .status.override{background:var(--warn-bg);color:var(--warn)}
+  .status.denied{background:var(--bad-bg);color:var(--bad)}
+  ul.reasons{margin:0;padding-left:0;list-style:none}
+  ul.reasons li{padding:8px 10px;border-left:3px solid var(--line);background:#fafbfc;border-radius:0 6px 6px 0;margin-bottom:6px;font-size:12.5px}
+  ul.reasons li.rule{border-left-color:var(--accent)}
+  ul.reasons li.pref{border-left-color:var(--work)}
+  ul.reasons li.block{border-left-color:var(--bad)}
+  ul.reasons li.warn{border-left-color:var(--warn)}
+  ul.reasons li b{display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:2px}
+
+  /* lists */
+  table.list{width:100%;border-collapse:collapse;font-size:13px}
+  table.list th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);padding:6px 8px;border-bottom:1px solid var(--line)}
+  table.list td{padding:8px;border-bottom:1px solid var(--line);vertical-align:middle}
+  table.list tr:last-child td{border-bottom:none}
+  table.list input[type=text],table.list input[type=number],table.list select{padding:5px 7px;border:1px solid var(--line);border-radius:6px;width:100%;background:#fff}
+
+  .rulecard{border:1px solid var(--line);border-radius:9px;padding:12px;margin-bottom:10px;background:#fff}
+  .rulecard.fresh{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  .rulecard.custom{border-left:3px solid var(--accent)}
+  .templaterow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:-6px 0 16px;font-size:12px;color:var(--muted)}
+  .templaterow select{flex:1 1 200px;min-width:0;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:#fff;font-size:12px}
+  .rulename{font-weight:650;font-size:13px;flex:1 1 160px;min-width:0}
+  .rulecard.disabled{opacity:.5}
+  .rulecard .head{display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
+  .rulecard .head select{flex:1 1 190px;min-width:0;padding:6px 8px;border:1px solid var(--line);border-radius:7px;background:#fff;font-weight:600}
+  .rulecard .params{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
+  .rulecard .summary{margin-top:8px;font-size:12px;color:var(--muted);background:#fafbfc;padding:6px 9px;border-radius:6px}
+  .pill{font-size:10px;padding:2px 8px;border-radius:20px;font-weight:700;letter-spacing:.4px}
+  .pill.hard{background:var(--bad-bg);color:var(--bad)}
+  .pill.soft{background:var(--warn-bg);color:var(--warn)}
+  .switch{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+  .staffmulti{display:flex;gap:8px;flex-wrap:wrap;background:#fafbfc;padding:8px;border-radius:7px;width:100%}
+  .staffmulti label{display:flex;gap:5px;align-items:center;font-size:12px;background:#fff;border:1px solid var(--line);padding:3px 8px;border-radius:20px}
+
+  .alert{padding:9px 12px;border-radius:8px;font-size:12.5px;margin-bottom:8px}
+  .alert.bad{background:var(--bad-bg);color:#8e1f1f;border:1px solid #f3c9c9}
+  .alert.warn{background:var(--warn-bg);color:#7c4a06;border:1px solid #f0dcbb}
+  .alert.ok{background:var(--work-bg);color:#0b6b3c;border:1px solid #c9e6d6}
+  .empty{color:var(--muted);font-size:13px;padding:18px;text-align:center;background:#fafbfc;border-radius:8px}
+  .hidden{display:none}
+
+  /* ============ RESPONSIVE ============
+     Layout is driven by a body class (view-desktop / view-tablet / view-phone).
+     In Auto mode JS sets it from the window width; the View picker forces one. */
+
+  /* --- phone-only day cards, used instead of the wide grid --- */
+  .daycard{border:1px solid var(--line);border-radius:9px;padding:10px 12px;margin-bottom:8px;background:#fff}
+  .daycard.we{background:var(--accent-soft);border-color:#d7e3fb}
+  .daycard .dhead{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:8px}
+  .daycard .dhead b{font-size:14px}
+  .daycard .cnt{font-size:12px;color:var(--muted);white-space:nowrap}
+  .daycard .cnt.bad{color:var(--bad);font-weight:700}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+  .chips .lbl{font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);width:100%;margin-bottom:-2px}
+  .pchip{border:1px solid var(--line);border-radius:20px;padding:5px 11px;font-size:12.5px;background:#fff;cursor:pointer;line-height:1.2}
+  .pchip.work{background:var(--work-bg);border-color:#bfe0cd;color:#0b6b3c}
+  .pchip.forced{background:#e3efff;border-color:#c3d8f7;color:#1d4ed8}
+  .pchip.off{background:var(--off-bg);color:#5b6068}
+  .pchip.override{background:var(--warn-bg);border-color:#f0dcbb;color:var(--warn)}
+  .pchip.denied{background:var(--bad-bg);border-color:#f3c9c9;color:var(--bad)}
+  .pchip.sel{outline:2px solid var(--accent);outline-offset:1px}
+
+  /* --- tablet and phone --- */
+  body.view-tablet .split, body.view-phone .split{grid-template-columns:minmax(0,1fr)}
+  body.view-tablet .exp, body.view-phone .exp{position:static}
+  body.view-tablet main{padding:16px}
+
+  /* --- phone --- */
+  body.view-phone .topbar{padding:8px 12px;gap:8px}
+  body.view-phone .brand{width:100%;margin:0;font-size:15px}
+  body.view-phone .topbar .field{flex:1 1 110px;min-width:0}
+  body.view-phone .topbar .field input,body.view-phone .topbar .field select{width:100%}
+  body.view-phone .topbar .btn{flex:1 1 auto;padding:9px 10px;font-size:13px}
+  body.view-phone nav.tabs{overflow-x:auto;padding:0 8px;scrollbar-width:none}
+  body.view-phone nav.tabs::-webkit-scrollbar{display:none}
+  body.view-phone nav.tabs button{padding:11px 10px;font-size:13px;white-space:nowrap}
+  body.view-phone main{padding:12px}
+  body.view-phone .panel{padding:12px;border-radius:9px;margin-bottom:12px}
+  body.view-phone .addbar{flex-direction:column;align-items:stretch}
+  body.view-phone .addbar .field,body.view-phone .addbar .btn{width:100%}
+  body.view-phone .templaterow{flex-direction:column;align-items:stretch}
+  body.view-phone .templaterow select,body.view-phone .templaterow .btn{width:100%}
+  body.view-phone .rulecard .params{flex-direction:column;align-items:stretch}
+  body.view-phone .rulecard .params .field{width:100%}
+  body.view-phone .legend{gap:8px 14px}
+
+  /* stack the staff / request tables into labelled cards */
+  body.view-phone table.list thead{display:none}
+  body.view-phone table.list tr{display:block;border:1px solid var(--line);border-radius:9px;margin-bottom:8px;padding:4px 2px;background:#fff}
+  body.view-phone table.list td{display:flex;justify-content:space-between;align-items:center;gap:12px;border:none;padding:6px 10px}
+  body.view-phone table.list td::before{content:attr(data-label);font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);flex:0 0 42%}
+  body.view-phone table.list td[data-label=""]::before{display:none}
+  body.view-phone table.list td input[type=text],body.view-phone table.list td input[type=number],body.view-phone table.list td select{max-width:56%}
+  body.view-phone table.list td .btn{width:100%}
+</style>
+</head>
+<body>
+
+<div id="stickytop">
+<header class="topbar">
+  <div class="brand">Staff Scheduler<small id="storeLabel">Fortnightly roster</small></div>
+
+  <div class="field"><label>Month</label><input type="month" id="periodMonth"></div>
+  <div class="field"><label>Cycle</label>
+    <select id="periodHalf">
+      <option value="1">1st &ndash; 15th</option>
+      <option value="2">16th &ndash; end of month</option>
+    </select>
+  </div>
+
+  <div class="field"><label>View</label>
+    <select id="viewMode">
+      <option value="auto">Auto</option>
+      <option value="phone">Phone</option>
+      <option value="tablet">Tablet</option>
+      <option value="desktop">Laptop</option>
+    </select>
+  </div>
+
+  <div class="spacer"></div>
+  <button class="btn" id="btnExport">Export CSV</button>
+  <button class="btn" id="btnReset">Reset demo data</button>
+  <button class="btn primary" id="btnGenerate">Generate schedule</button>
+</header>
+
+<nav class="tabs">
+  <button data-tab="schedule" class="active">Schedule</button>
+  <button data-tab="staff">Staff <span class="count" id="cStaff">0</span></button>
+  <button data-tab="rules">Rules <span class="count" id="cRules">0</span></button>
+  <button data-tab="requests">Time-off requests <span class="count" id="cReq">0</span></button>
+</nav>
+</div>
+
+<main>
+
+<!-- ============ SCHEDULE ============ -->
+<section id="tab-schedule">
+  <div id="alerts"></div>
+  <div class="split">
+    <div>
+      <div class="panel">
+        <h2 id="periodTitle">Schedule</h2>
+        <p class="hint" id="gridHint"></p>
+        <div class="gridwrap" id="gridwrap"><table class="grid" id="grid"></table></div>
+        <div id="dayCards" class="hidden"></div>
+        <div class="legend" id="legend">
+          <span><i style="background:var(--work-bg);border:1px solid #bfe0cd"></i>Working</span>
+          <span><i style="background:#e3efff;border:1px solid #c3d8f7"></i>Working &mdash; required by a rule</span>
+          <span><i style="background:var(--off-bg);border:1px solid #e0e2e6"></i>Off</span>
+          <span><i style="background:var(--warn-bg);border:1px solid #f0dcbb"></i>Off request overridden</span>
+          <span><i style="background:var(--bad-bg);border:1px solid #f3c9c9"></i>Rule conflict</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Time-off request outcomes</h2>
+        <p class="hint">Every preference, and what happened to it.</p>
+        <div id="reqOutcomes"></div>
+      </div>
+    </div>
+
+    <div class="panel exp" id="expPanel">
+      <div class="empty">Select a cell in the grid to see the reasoning.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ STAFF ============ -->
+<section id="tab-staff" class="hidden">
+  <div class="panel">
+    <h2>Staff list</h2>
+    <p class="hint">Add or remove people at any time. "Weekend-off eligible" marks the exceptional staff who are allowed weekends off.</p>
+    <div class="addbar">
+      <div class="field"><label>Name</label><input type="text" id="newStaffName" placeholder="e.g. Suganthi"></div>
+      <div class="field"><label>Role</label><input type="text" id="newStaffRole" placeholder="e.g. Cashier"></div>
+      <button class="btn primary" id="btnAddStaff">+ Add staff</button>
+    </div>
+    <table class="list" id="staffTable"></table>
+  </div>
+</section>
+
+<!-- ============ RULES ============ -->
+<section id="tab-rules" class="hidden">
+  <div class="split">
+    <div class="panel">
+      <h2>Scheduling rules</h2>
+      <p class="hint">Rules are evaluated top to bottom each day. <b>Hard</b> rules can never be broken; <b>soft</b> rules bend when coverage would otherwise fail. Add, edit or disable any rule &mdash; then regenerate.</p>
+      <div class="addbar">
+        <div class="field" style="flex:1;min-width:210px"><label>New rule &mdash; give it a name</label>
+          <input type="text" id="newRuleName" placeholder="e.g. Only 2 cashiers on Sundays">
+        </div>
+        <button class="btn primary" id="btnAddRule">+ Add rule</button>
+      </div>
+      <div class="templaterow">
+        <span>or start from a ready-made rule:</span>
+        <select id="newRuleType"></select>
+        <button class="btn sm" id="btnAddTemplate">Add</button>
+      </div>
+      <div id="ruleList"></div>
+    </div>
+    <div class="panel">
+      <h2>Rule types available</h2>
+      <p class="hint">Each type is a small building block; combine them to express your store's policy.</p>
+      <div id="ruleCatalog" style="font-size:12.5px;color:var(--muted)"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ REQUESTS ============ -->
+<section id="tab-requests" class="hidden">
+  <div class="panel">
+    <h2>Staff day-off preferences</h2>
+    <p class="hint">Each person can request specific days off (or days they'd prefer to work). Requests are honoured when the rules allow it &mdash; and explained when they don't.</p>
+    <div class="addbar">
+      <div class="field"><label>Staff</label><select id="reqStaff"></select></div>
+      <div class="field"><label>Type</label>
+        <select id="reqType"><option value="off">Wants day OFF</option><option value="work">Wants to WORK</option></select>
+      </div>
+      <div class="field"><label>Date</label><input type="date" id="reqDate"></div>
+      <div class="field"><label>Priority</label>
+        <select id="reqPriority"><option value="normal">Normal preference</option><option value="urgent">Urgent (treat as hard)</option></select>
+      </div>
+      <div class="field" style="min-width:200px"><label>Note (optional)</label><input type="text" id="reqNote" placeholder="e.g. family function"></div>
+      <button class="btn primary" id="btnAddReq">+ Add request</button>
+    </div>
+    <table class="list" id="reqTable"></table>
+  </div>
+</section>
+
+</main>
+
+<script>
+/* ============================================================
+   MODEL
+   ============================================================ */
+const uid = () => Math.random().toString(36).slice(2, 9);
+const WD = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const iso = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const parseISO = s => { const [y,m,d] = s.split('-').map(Number); return new Date(y, m-1, d); };
+const isWeekend = d => d.getDay() === 0 || d.getDay() === 6;
+const pretty = d => `${WD[d.getDay()]} ${d.getDate()} ${d.toLocaleString('en',{month:'short'})}`;
+
+/* ---- Rule catalog: this is what makes rules dynamic ---- */
+const RULE_TYPES = {
+  max_per_day: {
+    label: 'Maximum staff scheduled per day',
+    desc: 'Caps how many people can work on a given day.',
+    defaultHard: true,
+    fields: [
+      {k:'n', label:'Max people', type:'number', def:6, min:1},
+      {k:'scope', label:'Applies to', type:'select', options:['every day','weekdays only','weekends only'], def:'every day'}
+    ],
+    summary: p => `At most ${p.n} staff on ${p.scope}.`
+  },
+  min_per_day: {
+    label: 'Minimum staff scheduled per day',
+    desc: 'Coverage floor. If it cannot be met, soft rules and preferences are overridden.',
+    defaultHard: true,
+    fields: [
+      {k:'n', label:'Min people', type:'number', def:4, min:0},
+      {k:'scope', label:'Applies to', type:'select', options:['every day','weekdays only','weekends only'], def:'every day'}
+    ],
+    summary: p => `At least ${p.n} staff on ${p.scope}.`
+  },
+  weekend_mandatory: {
+    label: 'Weekend work is mandatory (with exceptions)',
+    desc: 'Everyone must work weekends, except the staff you mark as exceptions.',
+    defaultHard: true,
+    fields: [{k:'exempt', label:'Exceptional staff allowed weekends off', type:'staffmulti', def:[]}],
+    summary: (p, st) => `Weekends are mandatory for everyone except ${p.exempt.length ? p.exempt.map(id=>nameOf(id,st)).join(', ') : 'nobody'}.`
+  },
+  max_consecutive: {
+    label: 'Maximum consecutive working days',
+    desc: 'Forces a break after a run of shifts.',
+    defaultHard: true,
+    fields: [{k:'n', label:'Max in a row', type:'number', def:6, min:1}],
+    summary: p => `No more than ${p.n} consecutive working days.`
+  },
+  min_off_per_period: {
+    label: 'Minimum days off per cycle',
+    desc: 'Guarantees each person gets a set number of rest days in the fortnight.',
+    defaultHard: true,
+    fields: [{k:'n', label:'Days off', type:'number', def:2, min:0}],
+    summary: p => `Everyone gets at least ${p.n} day(s) off this cycle.`
+  },
+  max_days_per_period: {
+    label: 'Maximum working days per cycle',
+    desc: 'Caps total shifts per person in the fortnight.',
+    defaultHard: true,
+    fields: [{k:'n', label:'Max days', type:'number', def:12, min:1}],
+    summary: p => `Nobody works more than ${p.n} days this cycle.`
+  },
+  staff_fixed_off: {
+    label: 'Specific person always off on a weekday',
+    desc: 'A standing arrangement, e.g. "Ravi never works Tuesdays".',
+    defaultHard: true,
+    fields: [
+      {k:'staff', label:'Staff', type:'staff', def:''},
+      {k:'weekday', label:'Weekday', type:'weekday', def:2}
+    ],
+    summary: (p, st) => `${nameOf(p.staff, st) || '(pick someone)'} is always off on ${WD[p.weekday]}.`
+  },
+  staff_must_work: {
+    label: 'Specific person always works on a weekday',
+    desc: 'Key-holder or specialist coverage, e.g. "Priya always works Saturdays".',
+    defaultHard: true,
+    fields: [
+      {k:'staff', label:'Staff', type:'staff', def:''},
+      {k:'weekday', label:'Weekday', type:'weekday', def:6}
+    ],
+    summary: (p, st) => `${nameOf(p.staff, st) || '(pick someone)'} always works on ${WD[p.weekday]}.`
+  },
+  role_coverage: {
+    label: 'Minimum staff of a role per day',
+    desc: 'Ensures skill coverage, e.g. "at least 1 Supervisor every day".',
+    defaultHard: true,
+    fields: [
+      {k:'role', label:'Role', type:'text', def:'Supervisor'},
+      {k:'n', label:'Min count', type:'number', def:1, min:1},
+      {k:'scope', label:'Applies to', type:'select', options:['every day','weekdays only','weekends only'], def:'every day'}
+    ],
+    summary: p => `At least ${p.n} ${p.role} on ${p.scope}.`
+  },
+  fair_rotation: {
+    label: 'Balance total shifts fairly across staff',
+    desc: 'Prefers whoever has worked least when filling open slots.',
+    defaultHard: false,
+    fields: [{k:'strength', label:'Strength', type:'select', options:['low','medium','high'], def:'high'}],
+    summary: p => `Spread shifts evenly (${p.strength} priority).`
+  },
+  custom: {
+    label: 'Custom rule (write your own)',
+    desc: 'Build any rule from scratch: pick who it applies to, what they must or may not do, and when.',
+    custom: true,
+    defaultHard: true,
+    fields: [
+      {k:'name',        label:'Rule name',  type:'text',       def:'My new rule'},
+      {k:'subject',     label:'Applies to', type:'select',     def:'everyone', options:['everyone','a specific person','everyone in a role','everyone except a specific person']},
+      {k:'subjectStaff',label:'Person',     type:'staff',      def:''},
+      {k:'subjectRole', label:'Role',       type:'text',       def:''},
+      {k:'action',      label:'They',       type:'select',     def:'must not work', options:['must work','must not work','prefer to work','prefer not to work','at most N of them work','at least N of them work']},
+      {k:'n',           label:'N',          type:'number',     def:1},
+      {k:'when',        label:'When',       type:'select',     def:'every day', options:['every day','weekdays only','weekends only','a specific weekday','a specific date']},
+      {k:'weekday',     label:'Weekday',    type:'weekday',    def:0},
+      {k:'date',        label:'Date',       type:'date',       def:''},
+      {k:'except',      label:'Except these staff', type:'staffmulti', def:[]}
+    ],
+    summary: (p, st) => customSentence(p, st)
+  }
+};
+
+/* ---- Custom rule grammar: subject + action + when ---- */
+function subjectIds(p, st) {
+  st = st || state;
+  let ids;
+  if (p.subject === 'a specific person')            ids = p.subjectStaff ? [p.subjectStaff] : [];
+  else if (p.subject === 'everyone in a role')      ids = st.staff.filter(s => (s.role||'').toLowerCase() === (p.subjectRole||'').toLowerCase().trim()).map(s => s.id);
+  else if (p.subject === 'everyone except a specific person') ids = st.staff.filter(s => s.id !== p.subjectStaff).map(s => s.id);
+  else                                              ids = st.staff.map(s => s.id);
+  return ids.filter(id => !(p.except||[]).includes(id));
+}
+function customApplies(p, d) {
+  if (p.when === 'every day')      return true;
+  if (p.when === 'weekdays only')  return !isWeekend(d);
+  if (p.when === 'weekends only')  return isWeekend(d);
+  if (p.when === 'a specific weekday') return d.getDay() === +p.weekday;
+  if (p.when === 'a specific date')    return p.date === iso(d);
+  return false;
+}
+function subjectPhrase(p, st) {
+  if (p.subject === 'a specific person') return nameOf(p.subjectStaff, st) || '(nobody chosen)';
+  if (p.subject === 'everyone in a role') return p.subjectRole ? `every ${p.subjectRole}` : '(no role chosen)';
+  if (p.subject === 'everyone except a specific person') return `everyone except ${nameOf(p.subjectStaff, st) || '(nobody chosen)'}`;
+  return 'everyone';
+}
+function whenPhrase(p) {
+  if (p.when === 'a specific weekday') return `every ${WD[p.weekday]}`;
+  if (p.when === 'a specific date')    return p.date ? `on ${pretty(parseISO(p.date))}` : '(no date chosen)';
+  if (p.when === 'weekdays only')      return 'on weekdays';
+  if (p.when === 'weekends only')      return 'on weekends';
+  return 'every day';
+}
+function customSentence(p, st) {
+  const who = subjectPhrase(p, st), when = whenPhrase(p);
+  const ex = (p.except||[]).length ? ` (except ${p.except.map(id => nameOf(id, st)).join(', ')})` : '';
+  const a = p.action;
+  if (a === 'at most N of them work' || a === 'at least N of them work') {
+    const n = +p.n;
+    const base = p.subject === 'everyone in a role' ? (p.subjectRole || 'staff') : 'staff';
+    const noun = (n === 1 || base === 'staff') ? base : base + 's';
+    const verb = n === 1 ? 'works' : 'work';
+    const from = p.subject === 'a specific person' || p.subject === 'everyone except a specific person' ? ` of ${who}` : '';
+    return `${a.startsWith('at most') ? 'At most' : 'At least'} ${n} ${noun}${from} ${verb} ${when}${ex}.`;
+  }
+  const verb = {'must work':'must work','must not work':'must not work','prefer to work':'would prefer to work','prefer not to work':'would prefer not to work'}[a];
+  return `${who.charAt(0).toUpperCase() + who.slice(1)}${ex} ${verb} ${when}.`;
+}
+
+const nameOf = (id, st) => (st || state).staff.find(s => s.id === id)?.name || '';
+const scopeMatches = (scope, d) => scope === 'every day' || (scope === 'weekends only' && isWeekend(d)) || (scope === 'weekdays only' && !isWeekend(d));
+
+/* ---- Demo seed ---- */
+function seed() {
+  const today = new Date();
+  const names = [
+    ['Suganthi','Cashier'], ['Meena','Sales'], ['Arjun','Stock'], ['Priya','Supervisor'],
+    ['Ravi','Sales'], ['Kavya','Cashier'], ['Deepak','Stock'], ['Anitha','Supervisor']
+  ];
+  const staff = names.map(([name, role]) => ({ id: uid(), name, role, weekendExempt: name === 'Anitha', maxDays: null }));
+
+  const nextDow = dow => { const d = new Date(today); d.setDate(d.getDate() + ((dow - d.getDay() + 7) % 7 || 7)); return iso(d); };
+  const sug = staff[0].id;
+
+  return {
+    storeName: 'Main Street Store',
+    month: `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}`,
+    half: today.getDate() <= 15 ? '1' : '2',
+    staff,
+    rules: [
+      mkRule('max_per_day', {n:6, scope:'every day'}, true),
+      mkRule('weekend_mandatory', {exempt:[staff[7].id]}, true),
+      mkRule('min_off_per_period', {n:2}, true),
+      mkRule('max_consecutive', {n:6}, true),
+      mkRule('role_coverage', {role:'Supervisor', n:1, scope:'every day'}, true),
+      mkRule('fair_rotation', {strength:'high'}, false)
+    ],
+    requests: [
+      {id:uid(), staffId:sug, date:nextDow(5), type:'off', priority:'normal', note:'family function'},
+      {id:uid(), staffId:sug, date:nextDow(1), type:'off', priority:'normal', note:''},
+      {id:uid(), staffId:sug, date:nextDow(2), type:'off', priority:'normal', note:''},
+      {id:uid(), staffId:staff[3].id, date:nextDow(6), type:'off', priority:'normal', note:'wedding'}
+    ]
+  };
+}
+function mkRule(type, params, hard) {
+  const def = RULE_TYPES[type];
+  const p = {};
+  def.fields.forEach(f => p[f.k] = (params && params[f.k] !== undefined) ? params[f.k] : (Array.isArray(f.def) ? [...f.def] : f.def));
+  return { id: uid(), type, enabled: true, hard: hard !== undefined ? hard : def.defaultHard, p };
+}
+
+const STORE_KEY = 'staffScheduler.v1';
+let state = load() || seed();
+let result = null;          // generated schedule
+let selectedCell = null;    // {dateISO, staffId}
+
+function load() { try { return JSON.parse(localStorage.getItem(STORE_KEY)); } catch { return null; } }
+function save() { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+
+/* ============================================================
+   PERIOD
+   ============================================================ */
+function periodDays() {
+  const [y, m] = state.month.split('-').map(Number);
+  const last = new Date(y, m, 0).getDate();
+  const from = state.half === '1' ? 1 : 16;
+  const to   = state.half === '1' ? Math.min(15, last) : last;
+  const out = [];
+  for (let d = from; d <= to; d++) out.push(new Date(y, m - 1, d));
+  return out;
+}
+
+/* ============================================================
+   SCHEDULING ENGINE
+   ============================================================ */
+function generate() {
+  const days = periodDays();
+  const active = state.rules.filter(r => r.enabled);
+  const staff = state.staff;
+
+  const worked = {}, offCount = {}, streak = {};
+  staff.forEach(s => { worked[s.id] = 0; offCount[s.id] = 0; streak[s.id] = 0; });
+
+  const schedule = {};      // dateISO -> [staffId]
+  const explain  = {};      // dateISO -> staffId -> {status, reasons:[]}
+  const dayAlerts = {};     // dateISO -> [{level,msg}]
+  const reqOutcome = {};    // requestId -> {status, reason}
+
+  const fairness = active.find(r => r.type === 'fair_rotation');
+  const fairWeight = fairness ? ({low:2, medium:6, high:14})[fairness.p.strength] : 6;
+
+  days.forEach((day, dayIdx) => {
+    const key = iso(day);
+    const remainingIncl = days.length - dayIdx;
+    const ev = {};
+    staff.forEach(s => ev[s.id] = { force:[], hard:[], soft:[], notes:[], prefWork:false });
+    const alerts = [];
+    const groupMax = [], groupMin = [];   // subset caps / floors, from custom + role rules
+
+    /* --- caps --- */
+    let cap = staff.length, capRule = null, minCov = 0, minRule = null;
+    active.filter(r => r.type === 'max_per_day' && scopeMatches(r.p.scope, day)).forEach(r => {
+      if (+r.p.n < cap) { cap = +r.p.n; capRule = r; }
+    });
+    active.filter(r => r.type === 'min_per_day' && scopeMatches(r.p.scope, day)).forEach(r => {
+      if (+r.p.n > minCov) { minCov = +r.p.n; minRule = r; }
+    });
+
+    /* --- per-rule evaluation --- */
+    active.forEach(r => {
+      const t = r.type, P = r.p;
+      if (t === 'weekend_mandatory' && isWeekend(day)) {
+        staff.forEach(s => {
+          if (P.exempt.includes(s.id) || s.weekendExempt) {
+            ev[s.id].notes.push({k:'rule', t:'Weekend exception', m:`${s.name} is an exceptional staff member allowed weekends off.`});
+          } else {
+            ev[s.id].force.push({k:'rule', t:'Weekend coverage', m:`Weekend work is mandatory for all staff except designated exceptions.`, hard:r.hard});
+          }
+        });
+      }
+      if (t === 'max_consecutive') {
+        staff.forEach(s => { if (streak[s.id] >= +P.n)
+          ev[s.id].hard.push({k:'block', t:'Consecutive-day limit', m:`Already worked ${streak[s.id]} days in a row (limit ${P.n}). A rest day is required.`}); });
+      }
+      if (t === 'max_days_per_period') {
+        staff.forEach(s => { if (worked[s.id] >= +P.n)
+          ev[s.id].hard.push({k:'block', t:'Cycle limit', m:`Already scheduled ${worked[s.id]} days this cycle (max ${P.n}).`}); });
+      }
+      if (t === 'min_off_per_period') {
+        staff.forEach(s => {
+          const need = +P.n - offCount[s.id];
+          if (need >= remainingIncl && need > 0)
+            ev[s.id].hard.push({k:'block', t:'Guaranteed rest days', m:`Needs ${need} more day(s) off and only ${remainingIncl} day(s) remain in the cycle, so today must be off.`});
+        });
+      }
+      if (t === 'staff_fixed_off' && day.getDay() === +P.weekday) {
+        if (ev[P.staff]) ev[P.staff].hard.push({k:'block', t:'Standing day off', m:`${nameOf(P.staff)} is always off on ${WD[P.weekday]}.`});
+      }
+      if (t === 'staff_must_work' && day.getDay() === +P.weekday) {
+        if (ev[P.staff]) ev[P.staff].force.push({k:'rule', t:'Fixed working day', m:`${nameOf(P.staff)} always works on ${WD[P.weekday]}.`, hard:r.hard});
+      }
+      if (t === 'role_coverage' && scopeMatches(P.scope, day)) {
+        const ids = staff.filter(s => (s.role||'').toLowerCase() === (P.role||'').toLowerCase()).map(s => s.id);
+        groupMin.push({ids:new Set(ids), n:+P.n, label:'Role coverage', detail:`at least ${P.n} ${P.role} on duty`, role:P.role});
+      }
+      if (t === 'custom' && customApplies(P, day)) {
+        const ids = subjectIds(P), label = P.name || 'Custom rule', msg = customSentence(P, state);
+        const detail = msg.replace(/\.$/, '');   // reads better mid-sentence
+        if (P.action === 'must work')
+          ids.forEach(id => ev[id]?.force.push({k:'rule', t:label, m:msg, hard:r.hard}));
+        else if (P.action === 'must not work')
+          ids.forEach(id => ev[id] && (r.hard ? ev[id].hard : ev[id].soft).push({k:r.hard?'block':'pref', t:label, m:msg}));
+        else if (P.action === 'prefer to work')
+          ids.forEach(id => { if (ev[id]) { ev[id].prefWork = true; ev[id].notes.push({k:'pref', t:label, m:msg}); } });
+        else if (P.action === 'prefer not to work')
+          ids.forEach(id => ev[id]?.soft.push({k:'pref', t:label, m:msg}));
+        else if (P.action === 'at most N of them work')
+          groupMax.push({ids:new Set(ids), n:+P.n, label, detail});
+        else if (P.action === 'at least N of them work')
+          groupMin.push({ids:new Set(ids), n:+P.n, label, detail});
+      }
+    });
+
+    /* --- staff-level max days --- */
+    staff.forEach(s => { if (s.maxDays && worked[s.id] >= +s.maxDays)
+      ev[s.id].hard.push({k:'block', t:'Personal cap', m:`${s.name}'s personal limit of ${s.maxDays} days this cycle is reached.`}); });
+
+    /* --- requests --- */
+    const todayReqs = state.requests.filter(r => r.date === key);
+    todayReqs.forEach(r => {
+      if (!ev[r.staffId]) return;
+      const note = r.note ? ` (${r.note})` : '';
+      if (r.type === 'off') {
+        const entry = {k:'pref', t:'Requested day off', m:`${nameOf(r.staffId)} asked for this day off${note}.`, reqId:r.id};
+        if (r.priority === 'urgent') ev[r.staffId].hard.push({...entry, t:'Requested day off (urgent)'});
+        else ev[r.staffId].soft.push(entry);
+      } else {
+        ev[r.staffId].prefWork = true;
+        ev[r.staffId].notes.push({k:'pref', t:'Wants to work', m:`${nameOf(r.staffId)} asked to work this day${note}.`, reqId:r.id});
+      }
+    });
+
+    /* --- selection --- */
+    const selected = new Set();
+    const forcedIds = staff.filter(s => ev[s.id].force.length && !ev[s.id].hard.length).map(s => s.id);
+    const blockedForced = staff.filter(s => ev[s.id].force.length && ev[s.id].hard.length).map(s => s.id);
+
+    blockedForced.forEach(id => ev[id].notes.push({k:'warn', t:'Rule conflict', m:`A rule requires ${nameOf(id)} to work today, but a hard limit prevents it. The limit wins.`}));
+
+    if (forcedIds.length > cap) {
+      // too many mandatory people for the daily cap -> keep the fairest subset
+      const keep = forcedIds.slice().sort((a,b) => worked[a] - worked[b] || a.localeCompare(b)).slice(0, cap);
+      keep.forEach(id => selected.add(id));
+      forcedIds.filter(id => !keep.includes(id)).forEach(id => {
+        ev[id].notes.push({k:'warn', t:'Cap beats mandate',
+          m:`${nameOf(id)} is normally required today, but the daily cap of ${cap} was already filled by colleagues with fewer shifts so far (${worked[id]} worked).`});
+      });
+      alerts.push({level:'bad', msg:`${pretty(day)}: ${forcedIds.length} staff are required by rules but the daily cap is ${cap}. ${forcedIds.length - cap} had to be given the day off.`});
+    } else {
+      forcedIds.forEach(id => selected.add(id));
+    }
+
+    /* fill remaining slots */
+    const score = id => {
+      const s = ev[id];
+      let v = worked[id] * fairWeight + streak[id] * 3;
+      if (s.prefWork) v -= 20;
+      return v;
+    };
+    // a subset cap that adding this person would break, if any
+    const capBlocker = id => groupMax.find(g => g.ids.has(id) &&
+      [...selected].filter(x => g.ids.has(x)).length + 1 > g.n);
+
+    // forced people can themselves overflow a subset cap — trim the most-worked
+    groupMax.forEach(g => {
+      let inGroup = [...selected].filter(x => g.ids.has(x));
+      if (inGroup.length <= g.n) return;
+      inGroup.sort((a,b) => worked[b] - worked[a]);
+      inGroup.slice(g.n).forEach(id => {
+        selected.delete(id);
+        ev[id].notes.push({k:'warn', t:g.label, m:`${g.detail} — this cap was already filled by colleagues with fewer shifts, so ${nameOf(id)} is off today.`});
+      });
+      alerts.push({level:'bad', msg:`${pretty(day)}: "${g.label}" allows only ${g.n} of that group, but rules required ${inGroup.length}.`});
+    });
+
+    const pool = staff.filter(s => !selected.has(s.id) && !ev[s.id].hard.length && !ev[s.id].soft.length)
+                      .map(s => s.id).sort((a,b) => score(a) - score(b) || a.localeCompare(b));
+    for (const id of pool) {
+      if (selected.size >= cap) break;
+      const blk = capBlocker(id);
+      if (blk) { ev[id].notes.push({k:'block', t:blk.label, m:`${blk.detail} — that limit is already reached today.`}); continue; }
+      selected.add(id);
+    }
+
+    /* group floors — pull people in so every "at least N of X" rule is met */
+    groupMin.forEach(g => {
+      let need = g.n - [...selected].filter(id => g.ids.has(id)).length;
+      if (need <= 0) return;
+      const candidates = staff.filter(s => !selected.has(s.id) && !ev[s.id].hard.length && g.ids.has(s.id))
+                              .sort((a,b) => score(a.id) - score(b.id));
+      for (const c of candidates) {
+        if (need <= 0) break;
+        if (capBlocker(c.id)) continue;
+        // at cap? free a slot — prefer someone no rule requires, but displace a required
+        // person as a last resort, otherwise a hard floor could never be met on a full day
+        if (selected.size >= cap) {
+          let droppable = [...selected].filter(id => !forcedIds.includes(id) && !g.ids.has(id))
+                                       .sort((a,b) => worked[b] - worked[a]);
+          let displacedRequired = false;
+          if (!droppable.length) {
+            droppable = [...selected].filter(id => !g.ids.has(id)).sort((a,b) => worked[b] - worked[a]);
+            displacedRequired = true;
+          }
+          if (!droppable.length) break;
+          const drop = droppable[0];
+          selected.delete(drop);
+          ev[drop].notes.push({k:'warn', t:`Displaced — ${g.label}`, m: displacedRequired
+            ? `Another rule required ${nameOf(drop)} to work today, but the day was already full and "${g.detail}" could not be met otherwise — that rule took priority.`
+            : `Gave up today's slot so the rule "${g.detail}" could be met.`});
+        }
+        selected.add(c.id);
+        need--;
+        const wasSoft = ev[c.id].soft.length > 0;
+        ev[c.id].notes.push({k:'rule', t:g.label,
+          m:`Scheduled because of the rule "${g.detail}"${wasSoft ? ', which overrides the day-off request' : ''}.`});
+        if (wasSoft) ev[c.id].soft.forEach(s => { if (s.reqId) reqOutcome[s.reqId] = {status:'denied', reason:`Overridden by the rule "${g.detail}".`}; });
+      }
+      if (need > 0) {
+        const atCap = selected.size >= cap;
+        alerts.push({level:'warn', msg:`${pretty(day)}: "${g.detail}" is ${need} short — ` +
+          (atCap ? `the ${cap}-person daily cap is full and every rostered person is required by another rule.`
+                 : `nobody else in that group is available.`)});
+      }
+    });
+
+    /* minimum coverage — relax soft blocks (preferences) if needed */
+    if (selected.size < minCov) {
+      const relaxable = staff.filter(s => !selected.has(s.id) && !ev[s.id].hard.length && ev[s.id].soft.length)
+                             .map(s => s.id).sort((a,b) => score(a) - score(b));
+      for (const id of relaxable) {
+        if (selected.size >= minCov || selected.size >= cap) break;
+        if (capBlocker(id)) continue;
+        selected.add(id);
+        ev[id].notes.push({k:'warn', t:'Preference overridden',
+          m:`Day-off request could not be honoured: only ${selected.size - 1} staff were available and the minimum coverage is ${minCov}.`});
+        ev[id].soft.forEach(s => { if (s.reqId) reqOutcome[s.reqId] = {status:'denied', reason:`Minimum coverage of ${minCov} on ${pretty(day)} could not be met otherwise.`}; });
+      }
+      if (selected.size < minCov)
+        alerts.push({level:'bad', msg:`${pretty(day)}: only ${selected.size} staff available but the minimum coverage is ${minCov}.`});
+    }
+
+    /* --- record --- */
+    schedule[key] = [...selected];
+    explain[key] = {};
+    staff.forEach(s => {
+      const e = ev[s.id];
+      const working = selected.has(s.id);
+      const reasons = [];
+      let status = working ? 'work' : 'off';
+
+      if (working) {
+        e.force.forEach(f => reasons.push(f));
+        if (!e.force.length && !e.notes.some(n => n.t === 'Role coverage'))
+          reasons.push({k:'rule', t:'Filled open slot',
+            m:`Selected to fill the day's roster (${selected.size}/${cap} slots). Ranked by fewest shifts so far: ${worked[s.id]} day(s) worked.`});
+        if (e.soft.length) { status = 'override'; e.soft.forEach(sf => reasons.push({...sf, k:'warn'})); }
+        if (e.prefWork) reasons.push({k:'pref', t:'Preference honoured', m:`${s.name} asked to work today and was scheduled.`});
+      } else {
+        if (e.hard.length) { e.hard.forEach(h => reasons.push(h)); if (e.force.length) status = 'denied'; }
+        else if (e.soft.length) { e.soft.forEach(sf => reasons.push({...sf, t:sf.t + ' — honoured'})); }
+        else if (e.force.length) { status = 'denied'; }
+        else {
+          reasons.push({k:'block', t:'Not needed today',
+            m:`The daily cap of ${cap} was reached first. ${s.name} has worked ${worked[s.id]} day(s) this cycle; colleagues with fewer shifts were rostered ahead.`});
+        }
+        if (e.prefWork) reasons.push({k:'warn', t:'Preference not met', m:`${s.name} asked to work today but no slot was available.`});
+      }
+      e.notes.forEach(n => reasons.push(n));
+      const byRule = working && (e.force.length > 0 || e.notes.some(n => n.k === 'rule'));
+
+      explain[key][s.id] = {status, reasons, working, byRule};
+
+      // request outcomes for honoured off-days
+      todayReqs.filter(r => r.staffId === s.id && r.type === 'off').forEach(r => {
+        if (!reqOutcome[r.id]) reqOutcome[r.id] = working
+          ? {status:'denied', reason:'Overridden by a rule — see the cell explanation.'}
+          : {status:'honoured', reason:'Day off granted as requested.'};
+      });
+      todayReqs.filter(r => r.staffId === s.id && r.type === 'work').forEach(r => {
+        reqOutcome[r.id] = working ? {status:'honoured', reason:'Scheduled to work as requested.'}
+                                   : {status:'denied', reason:'No slot available within the daily cap.'};
+      });
+    });
+
+    /* --- counters --- */
+    staff.forEach(s => {
+      if (selected.has(s.id)) { worked[s.id]++; streak[s.id]++; }
+      else { offCount[s.id]++; streak[s.id] = 0; }
+    });
+    if (alerts.length) dayAlerts[key] = alerts;
+  });
+
+  /* post-check: min days off */
+  const globalAlerts = [];
+  const minOffRule = active.find(r => r.type === 'min_off_per_period');
+  staff.forEach(s => {
+    if (minOffRule && offCount[s.id] < +minOffRule.p.n)
+      globalAlerts.push({level:'warn', msg:`${s.name} got only ${offCount[s.id]} day(s) off — the rule asks for ${minOffRule.p.n}.`});
+  });
+
+  result = {days, schedule, explain, worked, offCount, dayAlerts, globalAlerts, reqOutcome};
+  selectedCell = null;
+  renderSchedule();
+}
+
+/* ============================================================
+   RENDER — SCHEDULE
+   ============================================================ */
+function renderSchedule() {
+  const [y, m] = state.month.split('-').map(Number);
+  const label = new Date(y, m-1, 1).toLocaleString('en', {month:'long', year:'numeric'});
+  document.getElementById('periodTitle').textContent =
+    `${label} — ${state.half === '1' ? '1st to 15th' : '16th to month end'}`;
+
+  const grid = document.getElementById('grid');
+  const phone = currentView() === 'phone';
+  document.getElementById('gridHint').textContent = phone
+    ? "Tap any name to see exactly why that person was scheduled — or why they weren't."
+    : "Click any cell to see exactly why that person was scheduled — or why they weren't.";
+  document.getElementById('gridwrap').classList.toggle('hidden', phone);
+  document.getElementById('dayCards').classList.toggle('hidden', !phone);
+  document.getElementById('legend').classList.toggle('hidden', phone);
+
+  if (!result) {
+    grid.innerHTML = `<tr><td class="empty" style="padding:30px">Press <b>Generate schedule</b> to build the roster.</td></tr>`;
+    document.getElementById('dayCards').innerHTML = `<div class="empty">Press <b>Generate schedule</b> to build the roster.</div>`;
+    document.getElementById('alerts').innerHTML = '';
+    document.getElementById('reqOutcomes').innerHTML = '<div class="empty">No schedule generated yet.</div>';
+    return;
+  }
+  const {days, schedule, explain, worked, offCount} = result;
+
+  let cap = {};
+  days.forEach(d => {
+    let c = state.staff.length;
+    state.rules.filter(r => r.enabled && r.type === 'max_per_day' && scopeMatches(r.p.scope, d)).forEach(r => c = Math.min(c, +r.p.n));
+    cap[iso(d)] = c;
+  });
+
+  let h = '<thead><tr><th class="namecol">Staff</th>';
+  days.forEach(d => h += `<th class="day ${isWeekend(d)?'we':''}">${d.getDate()}<span>${WD[d.getDay()]}</span></th>`);
+  h += '<th class="day">Total</th></tr></thead><tbody>';
+
+  state.staff.forEach(s => {
+    h += `<tr><td class="namecol">${esc(s.name)}${s.weekendExempt?'<span class="chip">wknd exempt</span>':''}<div class="role">${esc(s.role||'')}</div></td>`;
+    days.forEach(d => {
+      const k = iso(d), e = explain[k][s.id];
+      const mark = e.working ? '✓' : '·';
+      const cls = e.byRule ? 'forced' : e.status;
+      const isSel = selectedCell && selectedCell.date === k && selectedCell.staffId === s.id;
+      h += `<td class="cell ${cls} ${isSel?'sel':''}" data-date="${k}" data-staff="${s.id}" title="${esc(pretty(d))}">${mark}</td>`;
+    });
+    h += `<td class="cell" style="background:#fbfcfd;color:#444">${worked[s.id]}</td></tr>`;
+  });
+
+  h += '<tr class="totals"><td class="namecol">Scheduled that day</td>';
+  days.forEach(d => {
+    const k = iso(d), n = schedule[k].length;
+    const bad = n > cap[k] || (result.dayAlerts[k]||[]).some(a => a.level === 'bad');
+    h += `<td class="${bad?'bad':''}">${n}/${cap[k]}</td>`;
+  });
+  h += '<td></td></tr></tbody>';
+  grid.innerHTML = h;
+
+  /* phone: one card per day, tap a name for the reasoning */
+  const cards = days.map(d => {
+    const k = iso(d), on = schedule[k];
+    const chip = id => {
+      const e = explain[k][id];
+      const cls = e.working ? (e.byRule ? 'forced' : (e.status === 'override' ? 'override' : 'work'))
+                            : (e.status === 'denied' ? 'denied' : 'off');
+      const sel = selectedCell && selectedCell.date === k && selectedCell.staffId === id ? 'sel' : '';
+      return `<button class="pchip ${cls} ${sel}" data-date="${k}" data-staff="${id}">${esc(nameOf(id))}</button>`;
+    };
+    const offIds = state.staff.filter(s => !on.includes(s.id)).map(s => s.id);
+    const bad = on.length > cap[k] || (result.dayAlerts[k]||[]).some(a => a.level === 'bad');
+    return `<div class="daycard ${isWeekend(d)?'we':''}">
+      <div class="dhead"><b>${esc(pretty(d))}</b><span class="cnt ${bad?'bad':''}">${on.length}/${cap[k]} on duty</span></div>
+      <div class="chips"><span class="lbl">Working</span>${on.length ? on.map(chip).join('') : '<span style="font-size:12px;color:var(--muted)">nobody</span>'}</div>
+      ${offIds.length ? `<div class="chips" style="margin-bottom:0"><span class="lbl">Off</span>${offIds.map(chip).join('')}</div>` : ''}
+    </div>`;
+  }).join('');
+  document.getElementById('dayCards').innerHTML = cards;
+
+  document.querySelectorAll('td.cell[data-date], .pchip[data-date]').forEach(el => el.onclick = () => {
+    selectedCell = {date: el.dataset.date, staffId: el.dataset.staff};
+    renderSchedule();
+    if (phone) document.getElementById('expPanel').scrollIntoView({block:'nearest', behavior:'smooth'});
+  });
+
+  // alerts
+  const all = [...result.globalAlerts, ...Object.values(result.dayAlerts).flat()];
+  document.getElementById('alerts').innerHTML = all.length
+    ? all.map(a => `<div class="alert ${a.level}">${esc(a.msg)}</div>`).join('')
+    : `<div class="alert ok">All rules satisfied for this cycle.</div>`;
+
+  renderExplain();
+  renderReqOutcomes();
+}
+
+function renderExplain() {
+  const p = document.getElementById('expPanel');
+  if (!selectedCell || !result) { p.innerHTML = '<div class="empty">Select a cell in the grid to see the reasoning.</div>'; return; }
+  const {date, staffId} = selectedCell;
+  const s = state.staff.find(x => x.id === staffId);
+  const e = result.explain[date][staffId];
+  const labels = {work:'Scheduled to work', off:'Day off', override:'Working — request overridden', denied:'Off — rule conflict'};
+  p.innerHTML = `
+    <div class="who">${esc(s.name)}</div>
+    <div class="when">${esc(pretty(parseISO(date)))}${isWeekend(parseISO(date)) ? ' · weekend' : ''}</div>
+    <div class="status ${e.status}">${labels[e.status]}</div>
+    <ul class="reasons">${e.reasons.map(r => `<li class="${r.k}"><b>${esc(r.t)}</b>${esc(r.m)}</li>`).join('')}</ul>
+    <div style="margin-top:12px;font-size:12px;color:var(--muted)">
+      This cycle: <b>${result.worked[staffId]}</b> day(s) working, <b>${result.offCount[staffId]}</b> day(s) off.
+    </div>`;
+}
+
+function renderReqOutcomes() {
+  const box = document.getElementById('reqOutcomes');
+  const inPeriod = state.requests.filter(r => result.schedule[r.date]);
+  if (!inPeriod.length) { box.innerHTML = '<div class="empty">No requests fall inside this cycle.</div>'; return; }
+  box.innerHTML = inPeriod.map(r => {
+    const o = result.reqOutcome[r.id] || {status:'denied', reason:'Not evaluated.'};
+    const cls = o.status === 'honoured' ? 'ok' : 'warn';
+    return `<div class="alert ${cls}"><b>${esc(nameOf(r.staffId))}</b> — ${r.type==='off'?'day off':'wants to work'} on ${esc(pretty(parseISO(r.date)))}${r.note?` (${esc(r.note)})`:''}<br>
+      <b>${o.status === 'honoured' ? 'Honoured' : 'Not honoured'}:</b> ${esc(o.reason)}</div>`;
+  }).join('');
+}
+
+/* ============================================================
+   RENDER — STAFF
+   ============================================================ */
+function renderStaff() {
+  const t = document.getElementById('staffTable');
+  t.innerHTML = `<thead><tr><th>Name</th><th>Role</th><th style="width:140px">Weekend-off eligible</th><th style="width:120px">Max days / cycle</th><th style="width:70px"></th></tr></thead><tbody>` +
+    (state.staff.length ? state.staff.map(s => `
+      <tr>
+        <td data-label="Name"><input type="text" value="${esc(s.name)}" data-id="${s.id}" data-f="name"></td>
+        <td data-label="Role"><input type="text" value="${esc(s.role||'')}" data-id="${s.id}" data-f="role" placeholder="role"></td>
+        <td data-label="Weekend-off eligible" style="text-align:center"><input type="checkbox" ${s.weekendExempt?'checked':''} data-id="${s.id}" data-f="weekendExempt"></td>
+        <td data-label="Max days / cycle"><input type="number" min="1" value="${s.maxDays||''}" data-id="${s.id}" data-f="maxDays" placeholder="—"></td>
+        <td data-label=""><button class="btn sm danger" data-del="${s.id}">Remove</button></td>
+      </tr>`).join('') : `<tr><td colspan="5"><div class="empty">No staff yet. Add someone below.</div></td></tr>`) +
+    `</tbody>`;
+
+  t.querySelectorAll('input[data-f]').forEach(inp => inp.onchange = () => {
+    const s = state.staff.find(x => x.id === inp.dataset.id);
+    const f = inp.dataset.f;
+    s[f] = f === 'weekendExempt' ? inp.checked : (f === 'maxDays' ? (inp.value ? +inp.value : null) : inp.value);
+    save(); renderAll();
+  });
+  t.querySelectorAll('button[data-del]').forEach(b => b.onclick = () => {
+    const id = b.dataset.del;
+    state.staff = state.staff.filter(s => s.id !== id);
+    state.requests = state.requests.filter(r => r.staffId !== id);
+    state.rules.forEach(r => {
+      if (r.p.exempt) r.p.exempt = r.p.exempt.filter(x => x !== id);
+      if (r.p.staff === id) r.p.staff = '';
+    });
+    save(); result = null; renderAll();
+  });
+}
+
+/* ============================================================
+   RENDER — RULES
+   ============================================================ */
+function renderRules() {
+  const list = document.getElementById('ruleList');
+  list.innerHTML = state.rules.length ? state.rules.map((r, i) => ruleCard(r, i)).join('')
+    : `<div class="empty">No rules yet — the scheduler will roster everyone every day.</div>`;
+
+  list.querySelectorAll('[data-rid]').forEach(el => {
+    const r = state.rules.find(x => x.id === el.dataset.rid);
+    const f = el.dataset.field;
+    el.onchange = () => {
+      if (f === 'enabled') r.enabled = el.checked;
+      else if (f === 'hard') r.hard = el.value === 'hard';
+      else if (f === 'type') { const nr = mkRule(el.value, {}, undefined); nr.id = r.id; Object.assign(r, nr); }
+      else if (f === 'exempt' || f === 'except') {   // multi-staff checkbox groups
+        const box = el.closest('.staffmulti');
+        r.p[f] = [...box.querySelectorAll('input:checked')].map(c => c.value);
+      }
+      else r.p[f] = el.type === 'number' ? +el.value : el.value;
+      save(); renderRules();
+    };
+  });
+  list.querySelectorAll('button[data-delrule]').forEach(b => b.onclick = () => {
+    state.rules = state.rules.filter(r => r.id !== b.dataset.delrule); save(); renderRules(); updateCounts();
+  });
+  list.querySelectorAll('button[data-up]').forEach(b => b.onclick = () => {
+    const i = state.rules.findIndex(r => r.id === b.dataset.up);
+    if (i > 0) { [state.rules[i-1], state.rules[i]] = [state.rules[i], state.rules[i-1]]; save(); renderRules(); }
+  });
+}
+
+let freshRuleId = null;
+
+/* which fields of a custom rule are relevant right now */
+function visibleCustomFields(p) {
+  const show = ['name', 'subject'];
+  if (p.subject === 'a specific person' || p.subject === 'everyone except a specific person') show.push('subjectStaff');
+  if (p.subject === 'everyone in a role') show.push('subjectRole');
+  show.push('action');
+  if (p.action === 'at most N of them work' || p.action === 'at least N of them work') show.push('n');
+  show.push('when');
+  if (p.when === 'a specific weekday') show.push('weekday');
+  if (p.when === 'a specific date')    show.push('date');
+  show.push('except');
+  return show;
+}
+
+function ruleCard(r, i) {
+  const def = RULE_TYPES[r.type];
+  const typeOpts = Object.entries(RULE_TYPES).map(([k, v]) => `<option value="${k}" ${k===r.type?'selected':''}>${v.label}</option>`).join('');
+  const shown = def.custom ? visibleCustomFields(r.p) : null;
+  const params = def.fields.filter(f => !shown || shown.includes(f.k)).map(f => fieldHtml(r, f)).join('');
+  return `<div class="rulecard ${def.custom?'custom':''} ${r.enabled?'':'disabled'} ${r.id===freshRuleId?'fresh':''}">
+    <div class="head">
+      <label class="switch"><input type="checkbox" data-rid="${r.id}" data-field="enabled" ${r.enabled?'checked':''}> on</label>
+      <select data-rid="${r.id}" data-field="type">${typeOpts}</select>
+      <select data-rid="${r.id}" data-field="hard" style="flex:0 0 auto;padding:5px 7px;border:1px solid var(--line);border-radius:6px;font-size:12px">
+        <option value="hard" ${r.hard?'selected':''}>Hard</option>
+        <option value="soft" ${!r.hard?'selected':''}>Soft</option>
+      </select>
+      ${i>0?`<button class="btn sm" data-up="${r.id}" title="Move up">↑</button>`:''}
+      <button class="btn sm danger" data-delrule="${r.id}">Delete</button>
+    </div>
+    <div class="params">${params}</div>
+    <div class="summary">${esc(def.summary(r.p, state))} <span class="pill ${r.hard?'hard':'soft'}">${r.hard?'never broken':'can bend for coverage'}</span></div>
+  </div>`;
+}
+
+function fieldHtml(r, f) {
+  const v = r.p[f.k];
+  const a = `data-rid="${r.id}" data-field="${f.k}"`;
+  const wrap = inner => `<div class="field" style="min-width:130px"><label>${esc(f.label)}</label>${inner}</div>`;
+  if (f.type === 'number') return wrap(`<input type="number" ${a} value="${v}" min="${f.min||0}">`);
+  if (f.type === 'date')   return wrap(`<input type="date" ${a} value="${esc(v)}">`);
+  if (f.type === 'text')   return f.k === 'name'
+    ? `<div class="field" style="flex:1 1 220px;min-width:0"><label>${esc(f.label)}</label><input type="text" class="rulename" ${a} value="${esc(v)}"></div>`
+    : wrap(`<input type="text" ${a} value="${esc(v)}">`);
+  if (f.type === 'select') return wrap(`<select ${a}>${f.options.map(o=>`<option ${o===v?'selected':''}>${o}</option>`).join('')}</select>`);
+  if (f.type === 'weekday')return wrap(`<select ${a}>${WD.map((d,i)=>`<option value="${i}" ${i==v?'selected':''}>${d}</option>`).join('')}</select>`);
+  if (f.type === 'staff')  return wrap(`<select ${a}><option value="">— pick —</option>${state.staff.map(s=>`<option value="${s.id}" ${s.id===v?'selected':''}>${esc(s.name)}</option>`).join('')}</select>`);
+  if (f.type === 'staffmulti') return `<div class="field" style="width:100%"><label>${esc(f.label)}</label>
+      <div class="staffmulti">${state.staff.map(s=>`<label><input type="checkbox" ${a} value="${s.id}" ${(v||[]).includes(s.id)?'checked':''}>${esc(s.name)}</label>`).join('')}</div></div>`;
+  return '';
+}
+
+function renderCatalog() {
+  document.getElementById('ruleCatalog').innerHTML = Object.values(RULE_TYPES)
+    .map(v => `<div style="margin-bottom:10px"><b style="color:var(--ink)">${esc(v.label)}</b><br>${esc(v.desc)}</div>`).join('');
+  document.getElementById('newRuleType').innerHTML = Object.entries(RULE_TYPES)
+    .filter(([k]) => k !== 'custom')   // custom is what the "+ Add rule" button makes
+    .map(([k,v]) => `<option value="${k}">${v.label}</option>`).join('');
+}
+
+/* ============================================================
+   RENDER — REQUESTS
+   ============================================================ */
+function renderRequests() {
+  const t = document.getElementById('reqTable');
+  const sorted = [...state.requests].sort((a,b) => a.date.localeCompare(b.date));
+  t.innerHTML = `<thead><tr><th>Staff</th><th>Date</th><th>Type</th><th>Priority</th><th>Note</th><th>Outcome</th><th style="width:70px"></th></tr></thead><tbody>` +
+    (sorted.length ? sorted.map(r => {
+      const o = result?.reqOutcome?.[r.id];
+      const out = o ? `<span style="color:${o.status==='honoured'?'var(--work)':'var(--bad)'};font-weight:600">${o.status==='honoured'?'Honoured':'Not honoured'}</span><div style="font-size:11.5px;color:var(--muted)">${esc(o.reason)}</div>`
+                    : '<span style="color:var(--muted)">—</span>';
+      return `<tr>
+        <td data-label="Staff"><b>${esc(nameOf(r.staffId))}</b></td>
+        <td data-label="Date">${esc(pretty(parseISO(r.date)))}</td>
+        <td data-label="Type">${r.type === 'off' ? 'Day off' : 'Wants to work'}</td>
+        <td data-label="Priority">${r.priority === 'urgent' ? '<span class="pill hard">Urgent</span>' : 'Normal'}</td>
+        <td data-label="Note">${esc(r.note||'')}</td>
+        <td data-label="Outcome">${out}</td>
+        <td data-label=""><button class="btn sm danger" data-delreq="${r.id}">Remove</button></td>
+      </tr>`;
+    }).join('') : `<tr><td colspan="7"><div class="empty">No requests yet.</div></td></tr>`) + `</tbody>`;
+
+  t.querySelectorAll('button[data-delreq]').forEach(b => b.onclick = () => {
+    state.requests = state.requests.filter(r => r.id !== b.dataset.delreq); save(); renderAll();
+  });
+
+  document.getElementById('reqStaff').innerHTML = state.staff.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
+}
+
+/* ============================================================
+   WIRING
+   ============================================================ */
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function updateCounts() {
+  document.getElementById('cStaff').textContent = state.staff.length;
+  document.getElementById('cRules').textContent = state.rules.filter(r=>r.enabled).length;
+  document.getElementById('cReq').textContent = state.requests.length;
+}
+function renderAll() { updateCounts(); renderStaff(); renderRules(); renderRequests(); renderSchedule(); }
+
+document.querySelectorAll('nav.tabs button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('nav.tabs button').forEach(x => x.classList.toggle('active', x === b));
+  ['schedule','staff','rules','requests'].forEach(t =>
+    document.getElementById('tab-' + t).classList.toggle('hidden', t !== b.dataset.tab));
+});
+
+document.getElementById('periodMonth').value = state.month;
+document.getElementById('periodHalf').value = state.half;
+document.getElementById('periodMonth').onchange = e => { state.month = e.target.value; save(); result = null; renderSchedule(); };
+document.getElementById('periodHalf').onchange  = e => { state.half = e.target.value; save(); result = null; renderSchedule(); };
+
+document.getElementById('btnGenerate').onclick = generate;
+
+document.getElementById('btnAddStaff').onclick = () => {
+  const n = document.getElementById('newStaffName').value.trim();
+  if (!n) return;
+  state.staff.push({id:uid(), name:n, role:document.getElementById('newStaffRole').value.trim(), weekendExempt:false, maxDays:null});
+  document.getElementById('newStaffName').value = ''; document.getElementById('newStaffRole').value = '';
+  save(); result = null; renderAll();
+};
+
+function addRule(r) {
+  state.rules.unshift(r);           // newest at the top, where you're looking
+  freshRuleId = r.id;
+  save(); renderRules(); updateCounts();
+  document.querySelector('.rulecard.fresh')?.scrollIntoView({block:'nearest', behavior:'smooth'});
+}
+
+// brand-new rule: name it, then compose it — same flow as adding a staff member
+const newRuleName = document.getElementById('newRuleName');
+document.getElementById('btnAddRule').onclick = () => {
+  const name = newRuleName.value.trim();
+  addRule(mkRule('custom', {name: name || 'New rule'}, undefined));
+  newRuleName.value = '';
+  document.querySelector('.rulecard.fresh .rulename')?.focus();
+};
+newRuleName.onkeydown = e => { if (e.key === 'Enter') document.getElementById('btnAddRule').click(); };
+
+document.getElementById('btnAddTemplate').onclick = () =>
+  addRule(mkRule(document.getElementById('newRuleType').value, {}, undefined));
+
+document.getElementById('btnAddReq').onclick = () => {
+  const d = document.getElementById('reqDate').value;
+  const s = document.getElementById('reqStaff').value;
+  if (!d || !s) { alert('Pick a staff member and a date.'); return; }
+  state.requests.push({id:uid(), staffId:s, date:d, type:document.getElementById('reqType').value,
+    priority:document.getElementById('reqPriority').value, note:document.getElementById('reqNote').value.trim()});
+  document.getElementById('reqNote').value = '';
+  save(); result = null; renderAll();
+};
+
+document.getElementById('btnReset').onclick = () => {
+  if (!confirm('Reset staff, rules and requests back to the demo data?')) return;
+  state = seed(); result = null; save();
+  document.getElementById('periodMonth').value = state.month;
+  document.getElementById('periodHalf').value = state.half;
+  renderAll();
+};
+
+document.getElementById('btnExport').onclick = () => {
+  if (!result) { alert('Generate a schedule first.'); return; }
+  const rows = [['Staff','Role', ...result.days.map(d => `${d.getDate()} ${WD[d.getDay()]}`), 'Total']];
+  state.staff.forEach(s => rows.push([s.name, s.role||'',
+    ...result.days.map(d => result.explain[iso(d)][s.id].working ? 'WORK' : 'OFF'), result.worked[s.id]]));
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'}));
+  a.download = `roster-${state.month}-h${state.half}.csv`; a.click();
+};
+
+/* ============================================================
+   RESPONSIVE VIEW — auto by width, or forced from the View picker
+   ============================================================ */
+const VIEW_KEY = 'staffScheduler.view';
+let viewPref = localStorage.getItem(VIEW_KEY) || 'auto';
+const autoView = () => window.innerWidth < 700 ? 'phone' : (window.innerWidth < 1100 ? 'tablet' : 'desktop');
+const currentView = () => viewPref === 'auto' ? autoView() : viewPref;
+
+let appliedView = null;
+function applyView() {
+  const v = currentView();
+  if (v === appliedView) return;
+  appliedView = v;
+  document.body.className = 'view-' + v;
+  if (result) renderSchedule();          // grid <-> day cards
+}
+const viewSel = document.getElementById('viewMode');
+viewSel.value = viewPref;
+viewSel.onchange = () => {
+  viewPref = viewSel.value;
+  localStorage.setItem(VIEW_KEY, viewPref);
+  applyView();
+};
+window.addEventListener('resize', applyView);
+window.addEventListener('orientationchange', applyView);
+applyView();
+
+/* keep the sticky explanation panel clear of the sticky header, whatever its height */
+const syncTopbar = () => document.documentElement.style
+  .setProperty('--topbarH', document.getElementById('stickytop').offsetHeight + 'px');
+new ResizeObserver(syncTopbar).observe(document.getElementById('stickytop'));
+syncTopbar();
+
+renderCatalog();
+renderAll();
+generate();
+</script>
+</body>
+</html>
