@@ -41,7 +41,15 @@ Name it, then compose it from a small grammar:
 
 The card shows your rule as a sentence as you build it, e.g. *"At least 2 Supervisors work on weekends."* That name and sentence are what appear in the explanations.
 
-Ready-made rules cover the common cases: max/min staff per day, mandatory weekends with exceptions, max consecutive days, minimum days off per cycle, maximum working days per cycle, standing days off, fixed working days, role coverage, and fair rotation.
+Ready-made rules cover the common cases: **store closed (weekly holiday)**, max/min staff per day, mandatory weekends with exceptions, max consecutive days, minimum days off per cycle, maximum working days per cycle, standing days off, fixed working days, role coverage, and fair rotation.
+
+### Store holidays
+
+**Tuesday is set as the store's weekly holiday by default.** Nobody is rostered on a closed day, and it shows in the roster as a greyed-out "shut" column.
+
+Closed days are deliberately **not** counted as anyone's day off — if you also require two days off per cycle, staff get those two rest days *on top of* the Tuesday closures, rather than the closure quietly satisfying the rule. Closed days do break a run of consecutive working days.
+
+Change the closed day, add more (some stores shut two days), or switch it off entirely by editing the rule on the Rules tab.
 
 ## How the scheduler works
 

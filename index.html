@@ -78,6 +78,10 @@
   td.cell.override{background:var(--warn-bg);color:var(--warn)}
   td.cell.denied{background:var(--bad-bg);color:var(--bad)}
   td.cell.sel{outline:2px solid var(--accent);outline-offset:-2px}
+  table.grid th.day.closed{background:#e7e9ed;color:#7d848d}
+  table.grid th.day.closed span{color:#8d949d;font-style:italic}
+  td.cell.closed,tr.totals td.closed{
+    background:repeating-linear-gradient(45deg,#f2f3f5,#f2f3f5 3px,#e7e9ed 3px,#e7e9ed 6px);color:#9aa1ab}
   tr.totals td{background:#fbfcfd;font-weight:600;font-size:11.5px;padding:6px 0}
   tr.totals td.bad{background:var(--bad-bg);color:var(--bad)}
   .namecol .role{font-size:10.5px;color:var(--muted);font-weight:400;overflow:hidden;text-overflow:ellipsis}
@@ -96,6 +100,9 @@
   .status.off{background:var(--off-bg);color:#555}
   .status.override{background:var(--warn-bg);color:var(--warn)}
   .status.denied{background:var(--bad-bg);color:var(--bad)}
+  .status.closed{background:#e7e9ed;color:#5b6068}
+  .daycard.closed{background:#f4f5f7;border-color:#dfe2e6}
+  .daycard.closed .cnt{color:#5b6068;font-weight:600}
   ul.reasons{margin:0;padding-left:0;list-style:none}
   ul.reasons li{padding:8px 10px;border-left:3px solid var(--line);background:#fafbfc;border-radius:0 6px 6px 0;margin-bottom:6px;font-size:12.5px}
   ul.reasons li.rule{border-left-color:var(--accent)}
@@ -245,6 +252,7 @@
           <span><i style="background:var(--off-bg);border:1px solid #e0e2e6"></i>Off</span>
           <span><i style="background:var(--warn-bg);border:1px solid #f0dcbb"></i>Off request overridden</span>
           <span><i style="background:var(--bad-bg);border:1px solid #f3c9c9"></i>Rule conflict</span>
+          <span><i style="background:#eceef1;border:1px solid #d8dbe0"></i>Store closed</span>
         </div>
       </div>
 
@@ -333,6 +341,7 @@
    ============================================================ */
 const uid = () => Math.random().toString(36).slice(2, 9);
 const WD = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const WD_FULL = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const iso = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 const parseISO = s => { const [y,m,d] = s.split('-').map(Number); return new Date(y, m-1, d); };
 const isWeekend = d => d.getDay() === 0 || d.getDay() === 6;
@@ -340,6 +349,15 @@ const pretty = d => `${WD[d.getDay()]} ${d.getDate()} ${d.toLocaleString('en',{m
 
 /* ---- Rule catalog: this is what makes rules dynamic ---- */
 const RULE_TYPES = {
+  store_closed: {
+    label: 'Store closed (weekly holiday)',
+    desc: 'The store does not open on these weekdays, so nobody is rostered. Closed days are not counted as anyone\'s day off.',
+    defaultHard: true,
+    fields: [{k:'days', label:'Closed on', type:'weekdaymulti', def:[2]}],
+    summary: p => (p.days||[]).length
+      ? `Store is closed every ${p.days.map(d => WD_FULL[d]).join(', ')} — nobody is scheduled.`
+      : 'No closed days chosen yet.'
+  },
   max_per_day: {
     label: 'Maximum staff scheduled per day',
     desc: 'Caps how many people can work on a given day.',
@@ -515,6 +533,7 @@ function seed() {
     half: today.getDate() <= 15 ? '1' : '2',
     staff,
     rules: [
+      mkRule('store_closed', {days:[2]}, true),
       mkRule('max_per_day', {n:6, scope:'every day'}, true),
       mkRule('weekend_mandatory', {exempt:[staff[7].id]}, true),
       mkRule('min_off_per_period', {n:2}, true),
@@ -538,7 +557,17 @@ function mkRule(type, params, hard) {
 }
 
 const STORE_KEY = 'staffScheduler.v1';
-let state = load() || seed();
+/* One-time upgrades for rosters already saved in a browser. Each runs once and
+   records a flag, so a rule the user deliberately deletes does not come back. */
+function migrate(s) {
+  s.flags = s.flags || {};
+  if (!s.flags.storeClosed) {
+    s.flags.storeClosed = true;
+    if (!s.rules.some(r => r.type === 'store_closed')) s.rules.unshift(mkRule('store_closed', {days:[2]}, true));
+  }
+  return s;
+}
+let state = migrate(load() || seed());
 let result = null;          // generated schedule
 let selectedCell = null;    // {dateISO, staffId}
 
@@ -577,9 +606,35 @@ function generate() {
   const fairness = active.find(r => r.type === 'fair_rotation');
   const fairWeight = fairness ? ({low:2, medium:6, high:14})[fairness.p.strength] : 6;
 
+  // days the store does not open at all
+  const closedOn = d => active.find(r => r.type === 'store_closed' && (r.p.days||[]).map(Number).includes(d.getDay()));
+  const closedDays = {};
+  let openLeft = days.filter(d => !closedOn(d)).length;
+
   days.forEach((day, dayIdx) => {
     const key = iso(day);
-    const remainingIncl = days.length - dayIdx;
+
+    /* --- store closed: nobody is rostered, and it is not anyone's day off --- */
+    if (closedOn(day)) {
+      closedDays[key] = true;
+      schedule[key] = [];
+      explain[key] = {};
+      staff.forEach(s => {
+        explain[key][s.id] = {status:'closed', working:false, byRule:false, reasons:[
+          {k:'block', t:'Store closed', m:`The store is closed on ${WD_FULL[day.getDay()]}s, so nobody is rostered. This does not use up ${s.name}'s days off.`}
+        ]};
+        streak[s.id] = 0;          // not working breaks any run of consecutive days
+      });
+      state.requests.filter(r => r.date === key).forEach(r => {
+        reqOutcome[r.id] = r.type === 'off'
+          ? {status:'honoured', reason:`The store is closed on ${pretty(day)} anyway.`}
+          : {status:'denied', reason:`The store is closed on ${pretty(day)}.`};
+      });
+      return;
+    }
+
+    const remainingIncl = openLeft;   // open days left in the cycle, including today
+    openLeft--;
     const ev = {};
     staff.forEach(s => ev[s.id] = { force:[], hard:[], soft:[], notes:[], prefWork:false });
     const alerts = [];
@@ -836,7 +891,7 @@ function generate() {
       globalAlerts.push({level:'warn', msg:`${s.name} got only ${offCount[s.id]} day(s) off — the rule asks for ${minOffRule.p.n}.`});
   });
 
-  result = {days, schedule, explain, worked, offCount, dayAlerts, globalAlerts, reqOutcome};
+  result = {days, schedule, explain, worked, offCount, dayAlerts, globalAlerts, reqOutcome, closedDays};
   selectedCell = null;
   renderSchedule();
 }
@@ -887,7 +942,10 @@ function renderSchedule() {
   // fixed column widths: name column + equal day columns + a narrow total
   let h =`<colgroup><col style="width:${nameW}px">${days.map(()=>'<col>').join('')}<col style="width:34px"></colgroup>`;
   h += '<thead><tr><th class="namecol">Staff</th>';
-  days.forEach(d => h += `<th class="day ${isWeekend(d)?'we':''}">${d.getDate()}<span>${WD[d.getDay()].slice(0,2)}</span></th>`);
+  days.forEach(d => {
+    const cl = result.closedDays[iso(d)];
+    h += `<th class="day ${cl?'closed':(isWeekend(d)?'we':'')}" ${cl?'title="Store closed"':''}>${d.getDate()}<span>${cl?'shut':WD[d.getDay()].slice(0,2)}</span></th>`;
+  });
   h += '<th class="day" title="Days worked this cycle">Tot</th></tr></thead><tbody>';
 
   state.staff.forEach(s => {
@@ -896,7 +954,7 @@ function renderSchedule() {
          `<div class="role">${esc(s.role||'')}</div></td>`;
     days.forEach(d => {
       const k = iso(d), e = explain[k][s.id];
-      const mark = e.working ? '✓' : '·';
+      const mark = e.status === 'closed' ? '' : (e.working ? '✓' : '·');
       const cls = e.byRule ? 'forced' : e.status;
       const isSel = selectedCell && selectedCell.date === k && selectedCell.staffId === s.id;
       h += `<td class="cell ${cls} ${isSel?'sel':''}" data-date="${k}" data-staff="${s.id}" title="${esc(pretty(d))}">${mark}</td>`;
@@ -907,6 +965,7 @@ function renderSchedule() {
   h += '<tr class="totals"><td class="namecol">On duty</td>';
   days.forEach(d => {
     const k = iso(d), n = schedule[k].length;
+    if (result.closedDays[k]) { h += `<td class="closed" title="Store closed">—</td>`; return; }
     const bad = n > cap[k] || (result.dayAlerts[k]||[]).some(a => a.level === 'bad');
     h += `<td class="${bad?'bad':''}" title="${n} of a maximum ${cap[k]}">${n}/${cap[k]}</td>`;
   });
@@ -916,6 +975,9 @@ function renderSchedule() {
   /* phone: one card per day, tap a name for the reasoning */
   const cards = days.map(d => {
     const k = iso(d), on = schedule[k];
+    if (result.closedDays[k]) return `<div class="daycard closed">
+      <div class="dhead"><b>${esc(pretty(d))}</b><span class="cnt">Store closed</span></div>
+      <div style="font-size:12.5px;color:var(--muted)">Nobody is rostered, and it does not count as anyone's day off.</div></div>`;
     const chip = id => {
       const e = explain[k][id];
       const cls = e.working ? (e.byRule ? 'forced' : (e.status === 'override' ? 'override' : 'work'))
@@ -955,7 +1017,7 @@ function renderExplain() {
   const {date, staffId} = selectedCell;
   const s = state.staff.find(x => x.id === staffId);
   const e = result.explain[date][staffId];
-  const labels = {work:'Scheduled to work', off:'Day off', override:'Working — request overridden', denied:'Off — rule conflict'};
+  const labels = {work:'Scheduled to work', off:'Day off', override:'Working — request overridden', denied:'Off — rule conflict', closed:'Store closed'};
   p.innerHTML = `
     <div class="who">${esc(s.name)}</div>
     <div class="when">${esc(pretty(parseISO(date)))}${isWeekend(parseISO(date)) ? ' · weekend' : ''}</div>
@@ -1031,6 +1093,10 @@ function renderRules() {
         const box = el.closest('.staffmulti');
         r.p[f] = [...box.querySelectorAll('input:checked')].map(c => c.value);
       }
+      else if (f === 'days') {                        // weekday checkbox group
+        const box = el.closest('.staffmulti');
+        r.p.days = [...box.querySelectorAll('input:checked')].map(c => +c.value);
+      }
       else r.p[f] = el.type === 'number' ? +el.value : el.value;
       save(); renderRules();
     };
@@ -1095,6 +1161,8 @@ function fieldHtml(r, f) {
   if (f.type === 'staff')  return wrap(`<select ${a}><option value="">— pick —</option>${state.staff.map(s=>`<option value="${s.id}" ${s.id===v?'selected':''}>${esc(s.name)}</option>`).join('')}</select>`);
   if (f.type === 'staffmulti') return `<div class="field" style="width:100%"><label>${esc(f.label)}</label>
       <div class="staffmulti">${state.staff.map(s=>`<label><input type="checkbox" ${a} value="${s.id}" ${(v||[]).includes(s.id)?'checked':''}>${esc(s.name)}</label>`).join('')}</div></div>`;
+  if (f.type === 'weekdaymulti') return `<div class="field" style="width:100%"><label>${esc(f.label)}</label>
+      <div class="staffmulti">${WD.map((d,i)=>`<label><input type="checkbox" ${a} value="${i}" ${(v||[]).map(Number).includes(i)?'checked':''}>${d}</label>`).join('')}</div></div>`;
   return '';
 }
 
@@ -1215,7 +1283,8 @@ document.getElementById('btnExport').onclick = () => {
   if (!result) { alert('Generate a schedule first.'); return; }
   const rows = [['Staff','Role', ...result.days.map(d => `${d.getDate()} ${WD[d.getDay()]}`), 'Total']];
   state.staff.forEach(s => rows.push([s.name, s.role||'',
-    ...result.days.map(d => result.explain[iso(d)][s.id].working ? 'WORK' : 'OFF'), result.worked[s.id]]));
+    ...result.days.map(d => { const e = result.explain[iso(d)][s.id];
+      return e.status === 'closed' ? 'CLOSED' : (e.working ? 'WORK' : 'OFF'); }), result.worked[s.id]]));
   const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'}));
