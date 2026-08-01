@@ -43,6 +43,7 @@
   nav.tabs .count{background:var(--off-bg);border-radius:20px;padding:1px 7px;font-size:11px;margin-left:6px;color:var(--muted)}
 
   main{padding:20px;max-width:1500px;margin:0 auto}
+  main > section{scroll-margin-top:calc(var(--topbarH, 120px) + 12px)}  /* clear the sticky header */
   .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:16px}
   .panel h2{margin:0 0 4px;font-size:14px;letter-spacing:-.1px}
   .panelhead{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
@@ -56,15 +57,19 @@
   .split > *{min-width:0}   /* let the wide schedule table scroll inside its own box, not stretch the page */
   
   /* schedule grid */
-  .gridwrap{overflow-x:auto;max-width:100%;border:1px solid var(--line);border-radius:8px;background:#fff}
-  table.grid{border-collapse:separate;border-spacing:0;width:100%;font-size:12.5px}
-  table.grid th,table.grid td{border-bottom:1px solid var(--line);border-right:1px solid var(--line);padding:0;text-align:center;white-space:nowrap}
-  table.grid th.day{padding:6px 4px;font-weight:600;min-width:52px;background:#fbfcfd}
+  /* Fixed layout: day columns share whatever width is left, so the whole
+     cycle always fits the screen and never needs a horizontal scrollbar. */
+  .gridwrap{max-width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:#fff}
+  table.grid{border-collapse:separate;border-spacing:0;width:100%;table-layout:fixed;font-size:12.5px}
+  table.grid th,table.grid td{border-bottom:1px solid var(--line);border-right:1px solid var(--line);padding:0;text-align:center;white-space:nowrap;overflow:hidden}
+  table.grid th.day{padding:5px 1px;font-weight:600;background:#fbfcfd;font-size:12px}
   table.grid th.day.we{background:var(--accent-soft)}
-  table.grid th.day span{display:block;font-size:10px;font-weight:500;color:var(--muted)}
+  table.grid th.day span{display:block;font-size:9.5px;font-weight:500;color:var(--muted);letter-spacing:-.2px}
   table.grid th.namecol,table.grid td.namecol{
-    position:sticky;left:0;background:#fff;text-align:left;padding:7px 10px;min-width:170px;z-index:2;border-right:1px solid var(--line)
+    position:sticky;left:0;background:#fff;text-align:left;padding:6px 8px;z-index:2;border-right:1px solid var(--line);
+    overflow:hidden;text-overflow:ellipsis
   }
+  table.grid td.namecol .nm{display:block;overflow:hidden;text-overflow:ellipsis;font-size:12.5px}
   table.grid thead th.namecol{background:#fbfcfd;z-index:3}
   table.grid td.cell{cursor:pointer;height:34px;font-weight:600}
   td.cell.work{background:var(--work-bg);color:var(--work)}
@@ -75,8 +80,9 @@
   td.cell.sel{outline:2px solid var(--accent);outline-offset:-2px}
   tr.totals td{background:#fbfcfd;font-weight:600;font-size:11.5px;padding:6px 0}
   tr.totals td.bad{background:var(--bad-bg);color:var(--bad)}
-  .namecol .role{font-size:11px;color:var(--muted);font-weight:400}
-  .chip{display:inline-block;font-size:10px;padding:1px 6px;border-radius:20px;background:var(--accent-soft);color:var(--accent);margin-left:6px;vertical-align:1px}
+  .namecol .role{font-size:10.5px;color:var(--muted);font-weight:400;overflow:hidden;text-overflow:ellipsis}
+  .chip{display:inline-block;font-size:9px;font-weight:700;padding:0 4px;border-radius:20px;background:var(--accent-soft);color:var(--accent);margin-left:3px;vertical-align:1px}
+  tr.totals td.namecol{font-size:11.5px}
 
   .legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;font-size:11.5px;color:var(--muted)}
   .legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:-1px}
@@ -226,7 +232,6 @@
 
 <!-- ============ SCHEDULE ============ -->
 <section id="tab-schedule">
-  <div id="alerts"></div>
   <div class="split">
     <div>
       <div class="panel">
@@ -242,6 +247,8 @@
           <span><i style="background:var(--bad-bg);border:1px solid #f3c9c9"></i>Rule conflict</span>
         </div>
       </div>
+
+      <div id="alerts"></div>
 
       <div class="panel">
         <h2>Time-off request outcomes</h2>
@@ -844,7 +851,16 @@ function renderSchedule() {
     `${label} — ${state.half === '1' ? '1st to 15th' : '16th to month end'}`;
 
   const grid = document.getElementById('grid');
-  const phone = currentView() === 'phone';
+  const view = currentView();
+  const nameW = view === 'tablet' ? 96 : 132;
+
+  // The grid never scrolls sideways — it fits the width it is given. But below a
+  // readable column width, squeezing further is worse than switching layout, so
+  // fall back to day cards (also the phone default).
+  const nDays = result ? result.days.length : 16;
+  const panelW = document.getElementById('gridwrap').parentElement.clientWidth || 900;
+  const phone = view === 'phone' || (panelW - 26 - nameW - 34) / nDays < 26;
+
   document.getElementById('gridHint').textContent = phone
     ? "Tap any name to see exactly why that person was scheduled — or why they weren't."
     : "Click any cell to see exactly why that person was scheduled — or why they weren't.";
@@ -868,12 +884,16 @@ function renderSchedule() {
     cap[iso(d)] = c;
   });
 
-  let h = '<thead><tr><th class="namecol">Staff</th>';
-  days.forEach(d => h += `<th class="day ${isWeekend(d)?'we':''}">${d.getDate()}<span>${WD[d.getDay()]}</span></th>`);
-  h += '<th class="day">Total</th></tr></thead><tbody>';
+  // fixed column widths: name column + equal day columns + a narrow total
+  let h =`<colgroup><col style="width:${nameW}px">${days.map(()=>'<col>').join('')}<col style="width:34px"></colgroup>`;
+  h += '<thead><tr><th class="namecol">Staff</th>';
+  days.forEach(d => h += `<th class="day ${isWeekend(d)?'we':''}">${d.getDate()}<span>${WD[d.getDay()].slice(0,2)}</span></th>`);
+  h += '<th class="day" title="Days worked this cycle">Tot</th></tr></thead><tbody>';
 
   state.staff.forEach(s => {
-    h += `<tr><td class="namecol">${esc(s.name)}${s.weekendExempt?'<span class="chip">wknd exempt</span>':''}<div class="role">${esc(s.role||'')}</div></td>`;
+    h += `<tr><td class="namecol" title="${esc(s.name)}${s.role?' — '+esc(s.role):''}">` +
+         `<span class="nm">${esc(s.name)}${s.weekendExempt?'<span class="chip" title="Weekend-off eligible">W</span>':''}</span>` +
+         `<div class="role">${esc(s.role||'')}</div></td>`;
     days.forEach(d => {
       const k = iso(d), e = explain[k][s.id];
       const mark = e.working ? '✓' : '·';
@@ -884,11 +904,11 @@ function renderSchedule() {
     h += `<td class="cell" style="background:#fbfcfd;color:#444">${worked[s.id]}</td></tr>`;
   });
 
-  h += '<tr class="totals"><td class="namecol">Scheduled that day</td>';
+  h += '<tr class="totals"><td class="namecol">On duty</td>';
   days.forEach(d => {
     const k = iso(d), n = schedule[k].length;
     const bad = n > cap[k] || (result.dayAlerts[k]||[]).some(a => a.level === 'bad');
-    h += `<td class="${bad?'bad':''}">${n}/${cap[k]}</td>`;
+    h += `<td class="${bad?'bad':''}" title="${n} of a maximum ${cap[k]}">${n}/${cap[k]}</td>`;
   });
   h += '<td></td></tr></tbody>';
   grid.innerHTML = h;
@@ -1127,18 +1147,23 @@ function updateCounts() {
 }
 function renderAll() { updateCounts(); renderStaff(); renderRules(); renderRequests(); renderSchedule(); }
 
-document.querySelectorAll('nav.tabs button').forEach(b => b.onclick = () => {
-  document.querySelectorAll('nav.tabs button').forEach(x => x.classList.toggle('active', x === b));
+function showTab(tab) {
+  document.querySelectorAll('nav.tabs button').forEach(x => x.classList.toggle('active', x.dataset.tab === tab));
   ['schedule','staff','rules','requests'].forEach(t =>
-    document.getElementById('tab-' + t).classList.toggle('hidden', t !== b.dataset.tab));
-});
+    document.getElementById('tab-' + t).classList.toggle('hidden', t !== tab));
+}
+document.querySelectorAll('nav.tabs button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
 
 document.getElementById('periodMonth').value = state.month;
 document.getElementById('periodHalf').value = state.half;
 document.getElementById('periodMonth').onchange = e => { state.month = e.target.value; save(); result = null; renderSchedule(); };
 document.getElementById('periodHalf').onchange  = e => { state.half = e.target.value; save(); result = null; renderSchedule(); };
 
-document.getElementById('btnGenerate').onclick = generate;
+document.getElementById('btnGenerate').onclick = () => {
+  generate();
+  showTab('schedule');                       // the roster is what you asked for — show it
+  document.getElementById('tab-schedule').scrollIntoView({block:'start', behavior:'smooth'});
+};
 
 document.getElementById('btnAddStaff').onclick = () => {
   const n = document.getElementById('newStaffName').value.trim();
