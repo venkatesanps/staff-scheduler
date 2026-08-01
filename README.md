@@ -23,7 +23,7 @@ or, when a preference can't be met:
 - **Staff** — add and remove people at any time; set role, a personal cap on working days, and the **Weekend off allowed** tick that excepts someone from mandatory weekend work.
 - **Rules** — build your own rules from scratch, or start from a ready-made one. Each rule can be toggled on/off, reordered, and set as **hard** (never broken) or **soft** (bends when coverage would otherwise fail).
 - **Time-off requests** — each person can request days off or days they'd prefer to work, at normal or urgent priority. Every request is reported back as honoured or not, with the reason.
-- **Explanations** — per person, per day, in plain English, using your own rule names.
+- **Explanations** — per person, per day, in plain English, using your own rule names. Click a date header (or a day card's title on phone) to explain the whole day at once — who's on, who's off, and which rules actually acted.
 - **Conflict reporting** — when two hard rules can't both hold, you get a banner saying exactly which rules collided and how it was resolved.
 - **Responsive** — day-card layout on phones, scrollable grid on tablet and laptop. Switches automatically, or pick a view from the toolbar.
 - **Export** — download the roster as CSV.
@@ -61,6 +61,12 @@ The tiers are fixed — they're how the engine works, and pretending otherwise w
 
 The Rules tab continuously checks for contradictions you can spot without scheduling — a minimum above a maximum, a role nobody has, a rule that applies to nobody — and reports them above the list.
 
+**Preview** on any rule card runs the scheduler with that rule flipped on or off and shows the diff — who'd start or stop working, and where — without saving anything or touching the current roster. Click it again to close.
+
+Each card also shows its **impact** on the last generated roster: how many days it acted on, and what it did (required attendance, blocked someone, softened a preference, overrode a request). A rule that says "had no effect" either never applies as configured, or every other rule already covers it — worth a look either way.
+
+**Rule sets** let you save the whole rules list under a name — "Normal trading", "Festive season", "Exam week (reduced hours)" — and switch between them from the bar above the rule list. Loading a set replaces your current rules; nothing is lost if you save first.
+
 ### Weekends
 
 Most of the trade happens at the weekend, so **weekend work is mandatory for everyone and outranks the other rules**: the rest-day limits (max consecutive days, max days per cycle, personal caps) don't hold anyone back, and rest days are booked onto weekdays instead — early enough that a "minimum days off per cycle" rule is still met in full.
@@ -76,6 +82,8 @@ Most of the trade happens at the weekend, so **weekend work is mandatory for eve
 Closed days are deliberately **not** counted as anyone's day off — if you also require two days off per cycle, staff get those two rest days *on top of* the Tuesday closures, rather than the closure quietly satisfying the rule. Closed days do break a run of consecutive working days.
 
 Change the closed day, add more (some stores shut two days), or switch it off entirely by editing the rule on the Rules tab.
+
+For one-off closures — a public holiday, a stocktake shutdown, refurbishment — add a **Store closed for a date range** rule instead. Set the same start and end date for a single day.
 
 ## How the scheduler works
 

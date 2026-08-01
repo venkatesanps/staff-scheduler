@@ -78,6 +78,10 @@
   td.cell.override{background:var(--warn-bg);color:var(--warn)}
   td.cell.denied{background:var(--bad-bg);color:var(--bad)}
   td.cell.sel{outline:2px solid var(--accent);outline-offset:-2px}
+  table.grid th.day.clickable{cursor:pointer}
+  table.grid th.day.clickable:hover{background:var(--accent-soft)}
+  .daycard .dhead b.clickable{cursor:pointer}
+  .daycard .dhead b.clickable:hover{text-decoration:underline}
   table.grid th.day.closed{background:#e7e9ed;color:#7d848d}
   table.grid th.day.closed span{color:#8d949d;font-style:italic}
   td.cell.closed,tr.totals td.closed{
@@ -123,6 +127,11 @@
   .rulecard.custom{border-left:3px solid var(--accent)}
   .rulecard .relates{margin-top:6px;font-size:11.5px;color:var(--muted);padding-left:2px}
   .rulecard .relates b{color:#4b5563;font-weight:600}
+  .rulecard .impact{margin-top:6px;font-size:11.5px;color:#3b6bd4;padding-left:2px}
+  .rulecard .impact.zero{color:var(--muted);font-style:italic}
+  .previewbox{margin-top:10px;font-size:12px}
+  .previewbox .alert{margin-bottom:0}
+  .previewbox .alert div{margin-top:4px}
   .rulecard .head .pri{flex:0 0 auto;width:20px;height:20px;border-radius:50%;background:var(--ink);color:#fff;
     font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center}
   .rulecard.disabled .head .pri{background:var(--off)}
@@ -134,6 +143,8 @@
     font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;margin-top:1px}
   .tierhead b{font-size:12px;letter-spacing:.2px}
   .tierhead span{display:block;font-size:11.5px;color:var(--muted);line-height:1.35}
+  .presetbar{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;background:#fafbfc;border:1px solid var(--line);
+             border-radius:9px;padding:10px 12px;margin-bottom:12px}
   .templaterow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:-6px 0 16px;font-size:12px;color:var(--muted)}
   .templaterow select{flex:1 1 200px;min-width:0;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:#fff;font-size:12px}
   .rulename{font-weight:650;font-size:13px;flex:1 1 160px;min-width:0}
@@ -304,6 +315,17 @@
     <div class="panel">
       <h2>Scheduling rules</h2>
       <p class="hint">Rules are listed in the order the scheduler applies them. The numbered <b>tiers</b> are fixed &mdash; they are how the engine works &mdash; but you can reorder rules <b>within</b> a tier with &uarr;&darr;, and that is where order changes the outcome. <b>Hard</b> rules are never broken; <b>soft</b> rules bend when coverage would otherwise fail.</p>
+
+      <div class="presetbar">
+        <div class="field" style="flex:1;min-width:180px"><label>Rule set</label>
+          <select id="presetSelect"></select>
+        </div>
+        <button class="btn sm" id="btnPresetLoad">Load</button>
+        <button class="btn sm" id="btnPresetSaveAs">Save current as new&hellip;</button>
+        <button class="btn sm" id="btnPresetUpdate">Update saved</button>
+        <button class="btn sm danger" id="btnPresetDelete">Delete</button>
+      </div>
+
       <div id="ruleChecks"></div>
       <div class="addbar">
         <div class="field" style="flex:1;min-width:210px"><label>New rule &mdash; give it a name</label>
@@ -388,6 +410,24 @@ const RULE_TYPES = {
     summary: p => (p.days||[]).length
       ? `Store is closed every ${p.days.map(d => WD_FULL[d]).join(', ')} — nobody is scheduled.`
       : 'No closed days chosen yet.'
+  },
+  store_closed_dates: {
+    label: 'Store closed for a date range (holiday / shutdown)',
+    desc: 'A one-off closure — a public holiday, a stocktake shutdown, refurbishment. Set the same date twice for a single day.',
+    tier: 1,
+    relates: {overrides: ['every other rule, on those dates']},
+    defaultHard: true,
+    fields: [
+      {k:'reason', label:'Reason', type:'text',  def:'Public holiday'},
+      {k:'from',   label:'From',   type:'date',  def:''},
+      {k:'to',     label:'To',     type:'date',  def:''}
+    ],
+    summary: p => (p.from && p.to)
+      ? (p.from === p.to
+          ? `Closed on ${pretty(parseISO(p.from))} — ${p.reason || 'holiday'}.`
+          : `Closed from ${pretty(parseISO(p.from))} to ${pretty(parseISO(p.to))} — ${p.reason || 'holiday'}.`)
+        + (p.to < p.from ? ' ⚠ the end date is before the start date.' : '')
+      : 'No dates chosen yet.'
   },
   weekend_capacity: {
     label: 'Weekend staffing level (min and max)',
@@ -532,6 +572,13 @@ const RULE_TYPES = {
   }
 };
 
+/* ---- Rule set presets: named snapshots of the whole rules array,
+        e.g. "Normal trading" vs "Festive season" ---- */
+const PRESET_KEY = 'staffScheduler.presets';
+function loadPresets() { try { return JSON.parse(localStorage.getItem(PRESET_KEY)) || []; } catch { return []; } }
+function savePresets(list) { localStorage.setItem(PRESET_KEY, JSON.stringify(list)); }
+let activePresetId = null;
+
 /* ---- Custom rule grammar: subject + action + when ---- */
 function subjectIds(p, st) {
   st = st || state;
@@ -647,11 +694,16 @@ function migrate(s) {
       s.rules.push(mkRule('weekend_capacity', {min: Math.max(1, n - 2), max: Math.max(1, n - 1)}, true));
     }
   }
+  if (!s.flags.dateClosures) {
+    s.flags.dateClosures = true;   // no default rule added — a holiday range is store-specific
+  }
   return s;
 }
 let state = migrate(load() || seed());
 let result = null;          // generated schedule
 let selectedCell = null;    // {dateISO, staffId}
+let selectedDay = null;     // dateISO — explain a whole day instead of one person
+let preview = null;         // {schedule from computeSchedule()} — set while a draft rule is being trialled
 
 function load() { try { return JSON.parse(localStorage.getItem(STORE_KEY)); } catch { return null; } }
 function save() { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
@@ -672,7 +724,9 @@ function periodDays() {
 /* ============================================================
    SCHEDULING ENGINE
    ============================================================ */
-function generate() {
+/* Pure: builds a roster from the current rules and returns it, touching nothing.
+   generate() commits the result; the preview runs it and throws the result away. */
+function computeSchedule() {
   const days = periodDays();
   const active = state.rules.filter(r => r.enabled);
   const staff = state.staff;
@@ -689,7 +743,12 @@ function generate() {
   const fairWeight = fairness ? ({low:2, medium:6, high:14})[fairness.p.strength] : 6;
 
   // days the store does not open at all
-  const closedOn = d => active.find(r => r.type === 'store_closed' && (r.p.days||[]).map(Number).includes(d.getDay()));
+  const closedOn = d => active.find(r =>
+    (r.type === 'store_closed' && (r.p.days||[]).map(Number).includes(d.getDay())) ||
+    (r.type === 'store_closed_dates' && r.p.from && r.p.to && iso(d) >= r.p.from && iso(d) <= r.p.to));
+  const closedWhy = (r, d) => r.type === 'store_closed_dates'
+    ? `${r.p.reason || 'The store is closed'} — the store is shut on ${pretty(d)}`
+    : `The store is closed on ${WD_FULL[d.getDay()]}s`;
   const closedDays = {}, dayCap = {};
   const openDays = days.filter(d => !closedOn(d));
   let openIdx = 0;
@@ -698,20 +757,22 @@ function generate() {
     const key = iso(day);
 
     /* --- store closed: nobody is rostered, and it is not anyone's day off --- */
-    if (closedOn(day)) {
-      closedDays[key] = true;
+    const closer = closedOn(day);
+    if (closer) {
+      closedDays[key] = closer.type === 'store_closed_dates' ? (closer.p.reason || 'Closed') : true;
       schedule[key] = [];
       explain[key] = {};
       staff.forEach(s => {
         explain[key][s.id] = {status:'closed', working:false, byRule:false, reasons:[
-          {k:'block', t:'Store closed', m:`The store is closed on ${WD_FULL[day.getDay()]}s, so nobody is rostered. This does not use up ${s.name}'s days off.`}
+          {k:'block', t:'Store closed', rid:closer.id, imp:'blocked',
+           m:`${closedWhy(closer, day)}, so nobody is rostered. This does not use up ${s.name}'s days off.`}
         ]};
         streak[s.id] = 0;          // not working breaks any run of consecutive days
       });
       state.requests.filter(r => r.date === key).forEach(r => {
         reqOutcome[r.id] = r.type === 'off'
           ? {status:'honoured', reason:`The store is closed on ${pretty(day)} anyway.`}
-          : {status:'denied', reason:`The store is closed on ${pretty(day)}.`};
+          : {status:'denied', reason:`The store is closed on ${pretty(day)}.`, rid:closer.id};
       });
       return;
     }
@@ -762,12 +823,17 @@ function generate() {
     /* --- per-rule evaluation --- */
     active.forEach(r => {
       const t = r.type, P = r.p;
+      // tag every effect with the rule that caused it, so per-rule impact can be measured
+      const F = (id, o) => ev[id] && ev[id].force.push({...o, rid:r.id, imp:'forced'});
+      const H = (id, o) => ev[id] && ev[id].hard .push({...o, rid:r.id, imp:'blocked'});
+      const S = (id, o) => ev[id] && ev[id].soft .push({...o, rid:r.id, imp:'softened'});
+      const N = (id, o) => ev[id] && ev[id].notes.push({...o, rid:r.id, imp:'noted'});
       if (t === 'weekend_mandatory' && isWeekend(day)) {
         staff.forEach(s => {
           if (s.weekendExempt) {
-            ev[s.id].notes.push({k:'rule', t:'Weekend exception', m:`${s.name} is ticked "Weekend off allowed" on the Staff tab, so the weekend mandate does not apply.`});
+            N(s.id, {k:'rule', t:'Weekend exception', m:`${s.name} is ticked "Weekend off allowed" on the Staff tab, so the weekend mandate does not apply.`});
           } else {
-            ev[s.id].force.push({k:'rule', t:'Weekend coverage',
+            F(s.id, {k:'rule', t:'Weekend coverage',
               m:`Weekend work is mandatory for everyone — most of the trade happens at the weekend.` +
                 (capLifted ? ` This outranks the daily cap of ${capRule ? capRule.p.n : cap}, which was lifted to fit all ${cap} staff.` : ''), hard:r.hard});
           }
@@ -775,11 +841,11 @@ function generate() {
       }
       if (t === 'max_consecutive') {
         staff.forEach(s => { if (streak[s.id] >= +P.n && !mandated(s))
-          ev[s.id].hard.push({k:'block', t:'Consecutive-day limit', m:`Already worked ${streak[s.id]} days in a row (limit ${P.n}). A rest day is required.`}); });
+          H(s.id, {k:'block', t:'Consecutive-day limit', m:`Already worked ${streak[s.id]} days in a row (limit ${P.n}). A rest day is required.`}); });
       }
       if (t === 'max_days_per_period') {
         staff.forEach(s => { if (worked[s.id] >= +P.n && !mandated(s))
-          ev[s.id].hard.push({k:'block', t:'Cycle limit', m:`Already scheduled ${worked[s.id]} days this cycle (max ${P.n}).`}); });
+          H(s.id, {k:'block', t:'Cycle limit', m:`Already scheduled ${worked[s.id]} days this cycle (max ${P.n}).`}); });
       }
       if (t === 'min_off_per_period') {
         staff.forEach(s => {
@@ -790,35 +856,35 @@ function generate() {
           // so weekday rest is booked early rather than clashing with the weekend
           const offCapable = remainingOpen.filter(d2 => canBeOffOn(s, d2)).length;
           if (need >= offCapable)
-            ev[s.id].hard.push({k:'block', t:'Guaranteed rest days',
+            H(s.id, {k:'block', t:'Guaranteed rest days',
               m:`Needs ${need} more day(s) off and only ${offCapable} non-weekend day(s) remain in the cycle, so today must be off.`});
         });
       }
       if (t === 'staff_fixed_off' && day.getDay() === +P.weekday) {
-        if (ev[P.staff]) ev[P.staff].hard.push({k:'block', t:'Standing day off', m:`${nameOf(P.staff)} is always off on ${WD[P.weekday]}.`});
+        H(P.staff, {k:'block', t:'Standing day off', m:`${nameOf(P.staff)} is always off on ${WD[P.weekday]}.`});
       }
       if (t === 'staff_must_work' && day.getDay() === +P.weekday) {
-        if (ev[P.staff]) ev[P.staff].force.push({k:'rule', t:'Fixed working day', m:`${nameOf(P.staff)} always works on ${WD[P.weekday]}.`, hard:r.hard});
+        F(P.staff, {k:'rule', t:'Fixed working day', m:`${nameOf(P.staff)} always works on ${WD[P.weekday]}.`, hard:r.hard});
       }
       if (t === 'role_coverage' && scopeMatches(P.scope, day)) {
         const ids = staff.filter(s => (s.role||'').toLowerCase() === (P.role||'').toLowerCase()).map(s => s.id);
-        groupMin.push({ids:new Set(ids), n:+P.n, label:'Role coverage', detail:`at least ${P.n} ${P.role} on duty`, role:P.role});
+        groupMin.push({ids:new Set(ids), n:+P.n, label:'Role coverage', detail:`at least ${P.n} ${P.role} on duty`, role:P.role, rid:r.id});
       }
       if (t === 'custom' && customApplies(P, day)) {
         const ids = subjectIds(P), label = P.name || 'Custom rule', msg = customSentence(P, state);
         const detail = msg.replace(/\.$/, '');   // reads better mid-sentence
         if (P.action === 'must work')
-          ids.forEach(id => ev[id]?.force.push({k:'rule', t:label, m:msg, hard:r.hard}));
+          ids.forEach(id => F(id, {k:'rule', t:label, m:msg, hard:r.hard}));
         else if (P.action === 'must not work')
-          ids.forEach(id => ev[id] && (r.hard ? ev[id].hard : ev[id].soft).push({k:r.hard?'block':'pref', t:label, m:msg}));
+          ids.forEach(id => (r.hard ? H : S)(id, {k:r.hard?'block':'pref', t:label, m:msg}));
         else if (P.action === 'prefer to work')
-          ids.forEach(id => { if (ev[id]) { ev[id].prefWork = true; ev[id].notes.push({k:'pref', t:label, m:msg}); } });
+          ids.forEach(id => { if (ev[id]) { ev[id].prefWork = true; N(id, {k:'pref', t:label, m:msg}); } });
         else if (P.action === 'prefer not to work')
-          ids.forEach(id => ev[id]?.soft.push({k:'pref', t:label, m:msg}));
+          ids.forEach(id => S(id, {k:'pref', t:label, m:msg}));
         else if (P.action === 'at most N of them work')
-          groupMax.push({ids:new Set(ids), n:+P.n, label, detail});
+          groupMax.push({ids:new Set(ids), n:+P.n, label, detail, rid:r.id});
         else if (P.action === 'at least N of them work')
-          groupMin.push({ids:new Set(ids), n:+P.n, label, detail});
+          groupMin.push({ids:new Set(ids), n:+P.n, label, detail, rid:r.id});
       }
     });
 
@@ -861,9 +927,9 @@ function generate() {
       keep.forEach(id => selected.add(id));
       forcedIds.filter(id => !keep.includes(id)).forEach(id => {
         ev[id].notes.push(weekendCapped
-          ? {k:'rule', t:'Weekend off (rotating)',
+          ? {k:'rule', t:'Weekend off (rotating)', rid: wcRule && wcRule.id, imp:'blocked',
              m:`Weekend staffing is capped at ${cap}, so one person rests each weekend day. ${nameOf(id)} has worked ${wkWorked[id]} weekend day(s) so far — the most of those available — so today is their weekend off. This rotates.`}
-          : {k:'warn', t:'Cap beats mandate',
+          : {k:'warn', t:'Cap beats mandate', rid: capRule && capRule.id, imp:'blocked',
              m:`${nameOf(id)} is normally required today, but the daily cap of ${cap} was already filled by colleagues with fewer shifts so far (${worked[id]} worked).`});
       });
       if (!weekendCapped)
@@ -890,7 +956,7 @@ function generate() {
       inGroup.sort((a,b) => worked[b] - worked[a]);
       inGroup.slice(g.n).forEach(id => {
         selected.delete(id);
-        ev[id].notes.push({k:'warn', t:g.label, m:`${g.detail} — this cap was already filled by colleagues with fewer shifts, so ${nameOf(id)} is off today.`});
+        ev[id].notes.push({k:'warn', t:g.label, rid:g.rid, imp:'blocked', m:`${g.detail} — this cap was already filled by colleagues with fewer shifts, so ${nameOf(id)} is off today.`});
       });
       alerts.push({level:'bad', msg:`${pretty(day)}: "${g.label}" allows only ${g.n} of that group, but rules required ${inGroup.length}.`});
     });
@@ -900,7 +966,7 @@ function generate() {
     for (const id of pool) {
       if (selected.size >= cap) break;
       const blk = capBlocker(id);
-      if (blk) { ev[id].notes.push({k:'block', t:blk.label, m:`${blk.detail} — that limit is already reached today.`}); continue; }
+      if (blk) { ev[id].notes.push({k:'block', t:blk.label, rid:blk.rid, imp:'blocked', m:`${blk.detail} — that limit is already reached today.`}); continue; }
       selected.add(id);
     }
 
@@ -926,16 +992,16 @@ function generate() {
           if (!droppable.length) break;
           const drop = droppable[0];
           selected.delete(drop);
-          ev[drop].notes.push({k:'warn', t:`Displaced — ${g.label}`, m: displacedRequired
+          ev[drop].notes.push({k:'warn', t:`Displaced — ${g.label}`, rid:g.rid, imp:'blocked', m: displacedRequired
             ? `Another rule required ${nameOf(drop)} to work today, but the day was already full and "${g.detail}" could not be met otherwise — that rule took priority.`
             : `Gave up today's slot so the rule "${g.detail}" could be met.`});
         }
         selected.add(c.id);
         need--;
         const wasSoft = ev[c.id].soft.length > 0;
-        ev[c.id].notes.push({k:'rule', t:g.label,
+        ev[c.id].notes.push({k:'rule', t:g.label, rid:g.rid, imp:'forced',
           m:`Scheduled because of the rule "${g.detail}"${wasSoft ? ', which overrides the day-off request' : ''}.`});
-        if (wasSoft) ev[c.id].soft.forEach(s => { if (s.reqId) reqOutcome[s.reqId] = {status:'denied', reason:`Overridden by the rule "${g.detail}".`}; });
+        if (wasSoft) ev[c.id].soft.forEach(s => { if (s.reqId) reqOutcome[s.reqId] = {status:'denied', reason:`Overridden by the rule "${g.detail}".`, rid:g.rid}; });
       }
       if (need > 0) {
         const atCap = selected.size >= cap;
@@ -953,9 +1019,9 @@ function generate() {
         if (selected.size >= minCov || selected.size >= cap) break;
         if (capBlocker(id)) continue;
         selected.add(id);
-        ev[id].notes.push({k:'warn', t:'Preference overridden',
+        ev[id].notes.push({k:'warn', t:'Preference overridden', rid: minRule && minRule.id, imp:'forced',
           m:`Day-off request could not be honoured: only ${selected.size - 1} staff were available and the minimum coverage is ${minCov}.`});
-        ev[id].soft.forEach(s => { if (s.reqId) reqOutcome[s.reqId] = {status:'denied', reason:`Minimum coverage of ${minCov} on ${pretty(day)} could not be met otherwise.`}; });
+        ev[id].soft.forEach(s => { if (s.reqId) reqOutcome[s.reqId] = {status:'denied', reason:`Minimum coverage of ${minCov} on ${pretty(day)} could not be met otherwise.`, rid: minRule && minRule.id}; });
       }
       if (selected.size < minCov)
         alerts.push({level:'bad', msg:`${pretty(day)}: only ${selected.size} staff available but the minimum coverage is ${minCov}.`});
@@ -984,7 +1050,7 @@ function generate() {
         else if (!(wkRule && isWeekend(day) && s.weekendExempt)) {
           // (an excepted staff member off at the weekend is explained by the
           //  "Weekend exception" note below, not by the daily cap)
-          reasons.push({k:'block', t:'Not needed today',
+          reasons.push({k:'block', t:'Not needed today', rid: (isWeekend(day) && wcRule ? wcRule.id : (capRule && capRule.id)), imp:'blocked',
             m:`The daily cap of ${cap} was reached first. ${s.name} has worked ${worked[s.id]} day(s) this cycle; colleagues with fewer shifts were rostered ahead.`});
         }
         if (e.prefWork) reasons.push({k:'warn', t:'Preference not met', m:`${s.name} asked to work today but no slot was available.`});
@@ -1022,9 +1088,28 @@ function generate() {
       globalAlerts.push({level:'warn', msg:`${s.name} got only ${offCount[s.id]} day(s) off — the rule asks for ${minOffRule.p.n}.`});
   });
 
-  result = {days, schedule, explain, worked, offCount, dayAlerts, globalAlerts, reqOutcome, closedDays, dayCap};
-  selectedCell = null;
+  /* per-rule impact: which rules actually did something, and how much */
+  const impact = {};
+  const slot = rid => impact[rid] || (impact[rid] =
+    {days:new Set(), forced:0, blocked:0, softened:0, noted:0, overrode:0});
+  Object.entries(explain).forEach(([k, per]) => Object.values(per).forEach(e => e.reasons.forEach(rs => {
+    if (!rs.rid) return;
+    const i = slot(rs.rid);
+    i.days.add(k);
+    if (rs.imp) i[rs.imp]++;
+  })));
+  Object.values(reqOutcome).forEach(o => { if (o.rid) slot(o.rid).overrode++; });
+  Object.values(impact).forEach(i => i.dayCount = i.days.size);
+
+  return {days, schedule, explain, worked, offCount, dayAlerts, globalAlerts,
+          reqOutcome, closedDays, dayCap, impact};
+}
+
+function generate() {
+  result = computeSchedule();
+  selectedCell = null; selectedDay = null; preview = null;
   renderSchedule();
+  renderRules();          // refresh the per-rule impact figures
 }
 
 /* ============================================================
@@ -1070,7 +1155,8 @@ function renderSchedule() {
   h += '<thead><tr><th class="namecol">Staff</th>';
   days.forEach(d => {
     const cl = result.closedDays[iso(d)];
-    h += `<th class="day ${cl?'closed':(isWeekend(d)?'we':'')}" ${cl?'title="Store closed"':''}>${d.getDate()}<span>${cl?'shut':WD[d.getDay()].slice(0,2)}</span></th>`;
+    const clLabel = typeof cl === 'string' ? cl : 'Store closed';
+    h += `<th class="day clickable ${cl?'closed':(isWeekend(d)?'we':'')}" data-daykey="${iso(d)}" title="${cl?esc(clLabel):'Explain this day'}">${d.getDate()}<span>${cl?'shut':WD[d.getDay()].slice(0,2)}</span></th>`;
   });
   h += '<th class="day" title="Days worked this cycle">Tot</th></tr></thead><tbody>';
 
@@ -1091,7 +1177,8 @@ function renderSchedule() {
   h += '<tr class="totals"><td class="namecol">On duty</td>';
   days.forEach(d => {
     const k = iso(d), n = schedule[k].length;
-    if (result.closedDays[k]) { h += `<td class="closed" title="Store closed">—</td>`; return; }
+    if (result.closedDays[k]) { const cl = result.closedDays[k];
+      h += `<td class="closed" title="${esc(typeof cl==='string'?cl:'Store closed')}">—</td>`; return; }
     const bad = n > cap[k] || (result.dayAlerts[k]||[]).some(a => a.level === 'bad');
     h += `<td class="${bad?'bad':''}" title="${n} of a maximum ${cap[k]}">${n}/${cap[k]}</td>`;
   });
@@ -1101,9 +1188,10 @@ function renderSchedule() {
   /* phone: one card per day, tap a name for the reasoning */
   const cards = days.map(d => {
     const k = iso(d), on = schedule[k];
-    if (result.closedDays[k]) return `<div class="daycard closed">
-      <div class="dhead"><b>${esc(pretty(d))}</b><span class="cnt">Store closed</span></div>
-      <div style="font-size:12.5px;color:var(--muted)">Nobody is rostered, and it does not count as anyone's day off.</div></div>`;
+    if (result.closedDays[k]) { const cl = result.closedDays[k];
+      return `<div class="daycard closed">
+      <div class="dhead"><b>${esc(pretty(d))}</b><span class="cnt">${esc(typeof cl==='string'?cl:'Store closed')}</span></div>
+      <div style="font-size:12.5px;color:var(--muted)">Nobody is rostered, and it does not count as anyone's day off.</div></div>`; }
     const chip = id => {
       const e = explain[k][id];
       const cls = e.working ? (e.byRule ? 'forced' : (e.status === 'override' ? 'override' : 'work'))
@@ -1114,7 +1202,7 @@ function renderSchedule() {
     const offIds = state.staff.filter(s => !on.includes(s.id)).map(s => s.id);
     const bad = on.length > cap[k] || (result.dayAlerts[k]||[]).some(a => a.level === 'bad');
     return `<div class="daycard ${isWeekend(d)?'we':''}">
-      <div class="dhead"><b>${esc(pretty(d))}</b><span class="cnt ${bad?'bad':''}">${on.length}/${cap[k]} on duty</span></div>
+      <div class="dhead"><b class="clickable" data-daykey="${k}">${esc(pretty(d))}</b><span class="cnt ${bad?'bad':''}">${on.length}/${cap[k]} on duty</span></div>
       <div class="chips"><span class="lbl">Working</span>${on.length ? on.map(chip).join('') : '<span style="font-size:12px;color:var(--muted)">nobody</span>'}</div>
       ${offIds.length ? `<div class="chips" style="margin-bottom:0"><span class="lbl">Off</span>${offIds.map(chip).join('')}</div>` : ''}
     </div>`;
@@ -1122,7 +1210,12 @@ function renderSchedule() {
   document.getElementById('dayCards').innerHTML = cards;
 
   document.querySelectorAll('td.cell[data-date], .pchip[data-date]').forEach(el => el.onclick = () => {
-    selectedCell = {date: el.dataset.date, staffId: el.dataset.staff};
+    selectedCell = {date: el.dataset.date, staffId: el.dataset.staff}; selectedDay = null;
+    renderSchedule();
+    if (phone) document.getElementById('expPanel').scrollIntoView({block:'nearest', behavior:'smooth'});
+  });
+  document.querySelectorAll('[data-daykey]').forEach(el => el.onclick = () => {
+    selectedDay = el.dataset.daykey; selectedCell = null;
     renderSchedule();
     if (phone) document.getElementById('expPanel').scrollIntoView({block:'nearest', behavior:'smooth'});
   });
@@ -1139,7 +1232,8 @@ function renderSchedule() {
 
 function renderExplain() {
   const p = document.getElementById('expPanel');
-  if (!selectedCell || !result) { p.innerHTML = '<div class="empty">Select a cell in the grid to see the reasoning.</div>'; return; }
+  if (selectedDay && result) { renderExplainDay(p, selectedDay); return; }
+  if (!selectedCell || !result) { p.innerHTML = '<div class="empty">Select a cell in the grid to see the reasoning &mdash; or a date header to explain the whole day.</div>'; return; }
   const {date, staffId} = selectedCell;
   const s = state.staff.find(x => x.id === staffId);
   const e = result.explain[date][staffId];
@@ -1152,6 +1246,54 @@ function renderExplain() {
     <div style="margin-top:12px;font-size:12px;color:var(--muted)">
       This cycle: <b>${result.worked[staffId]}</b> day(s) working, <b>${result.offCount[staffId]}</b> day(s) off.
     </div>`;
+}
+
+function renderExplainDay(p, date) {
+  const d = parseISO(date);
+  if (result.closedDays[date]) {
+    const cl = result.closedDays[date];
+    p.innerHTML = `<div class="who">${esc(pretty(d))}</div>
+      <div class="status closed">Store closed</div>
+      <ul class="reasons"><li class="block"><b>${esc(typeof cl==='string'?cl:'Store closed')}</b>Nobody is rostered today, and it is not counted as anyone's day off.</li></ul>`;
+    return;
+  }
+  const on = result.schedule[date] || [];
+  const off = state.staff.filter(s => !on.includes(s.id));
+  const cap = result.dayCap[date];
+  const bad = on.length > cap || (result.dayAlerts[date]||[]).some(a => a.level === 'bad');
+  const nameChip = (id, cls) => {
+    const e = result.explain[date][id];
+    const c = e.byRule ? 'forced' : (cls === 'work' ? (e.status==='override'?'override':'work') : (e.status==='denied'?'denied':'off'));
+    return `<button class="pchip ${c}" data-date="${date}" data-staff="${id}">${esc(nameOf(id))}</button>`;
+  };
+  // which rules actually did something today, in priority order
+  const todaysRules = state.rules.filter(r => r.enabled).map(r => {
+    const i = result.impact[r.id];
+    const acted = i && i.days.has(date);
+    return {r, acted};
+  }).filter(x => x.acted).sort((a,b) => tierOf(a.r) - tierOf(b.r));
+
+  p.innerHTML = `
+    <div class="who">${esc(pretty(d))}${isWeekend(d)?' · weekend':''}</div>
+    <div class="status ${bad?'denied':'work'}">${on.length} of a maximum ${cap} on duty</div>
+    <div style="font-size:12px;font-weight:650;color:var(--muted);margin:10px 0 4px">Working (${on.length})</div>
+    <div class="chips">${on.length ? on.map(id=>nameChip(id,'work')).join('') : '<span style="font-size:12px;color:var(--muted)">nobody</span>'}</div>
+    <div style="font-size:12px;font-weight:650;color:var(--muted);margin:10px 0 4px">Off (${off.length})</div>
+    <div class="chips">${off.length ? off.map(s=>nameChip(s.id,'off')).join('') : '<span style="font-size:12px;color:var(--muted)">nobody</span>'}</div>
+    <div style="font-size:12px;font-weight:650;color:var(--muted);margin:14px 0 4px">Rules that acted today</div>
+    <ul class="reasons">${todaysRules.length ? todaysRules.map(({r}) =>
+      `<li class="rule"><b>${esc(r.p.name || RULE_TYPES[r.type].label)}</b>${esc(RULE_TYPES[r.type].summary(r.p, state))}</li>`).join('')
+      : '<li class="rule">No rule changed today\'s roster &mdash; capacity and fairness alone decided it.</li>'}</ul>
+    <div style="margin-top:10px"><button class="btn sm" id="btnClearDay">Back to grid</button></div>`;
+  document.getElementById('btnClearDay').onclick = () => { selectedDay = null; renderExplain(); };
+  bindNameChips(p);   // these chips render after the grid's own binding pass, so wire them here
+}
+
+function bindNameChips(scope) {
+  scope.querySelectorAll('.pchip[data-date]').forEach(el => el.onclick = () => {
+    selectedCell = {date: el.dataset.date, staffId: el.dataset.staff}; selectedDay = null;
+    renderSchedule();
+  });
 }
 
 function renderReqOutcomes() {
@@ -1206,6 +1348,7 @@ function renderStaff() {
 function renderRules() {
   const list = document.getElementById('ruleList');
   renderRuleChecks();
+  renderPresetBar();
 
   if (!state.rules.length) {
     list.innerHTML = `<div class="empty">No rules yet — the scheduler will roster everyone every day.</div>`;
@@ -1254,6 +1397,7 @@ function renderRules() {
   list.querySelectorAll('button[data-delrule]').forEach(b => b.onclick = () => {
     state.rules = state.rules.filter(r => r.id !== b.dataset.delrule); save(); renderRules(); updateCounts();
   });
+  list.querySelectorAll('button[data-preview]').forEach(b => b.onclick = () => previewRule(b.dataset.preview));
   list.querySelectorAll('button[data-dup]').forEach(b => b.onclick = () => {
     const src = state.rules.find(r => r.id === b.dataset.dup);
     const copy = JSON.parse(JSON.stringify(src));
@@ -1306,9 +1450,70 @@ function ruleChecks() {
   });
   const sc = find('store_closed');
   if (sc && !(sc.p.days||[]).length) out.push({level:'warn', msg:`Store closed rule has no days ticked, so the store never closes.`});
+  on.filter(r => r.type === 'store_closed_dates').forEach(r => {
+    if (!r.p.from || !r.p.to) out.push({level:'warn', msg:`"${r.p.reason || 'Store closure'}" has no dates chosen yet.`});
+    else if (r.p.to < r.p.from) out.push({level:'bad', msg:`"${r.p.reason || 'Store closure'}": the end date is before the start date.`});
+  });
   if (find('weekend_capacity') && !find('weekend_mandatory'))
     out.push({level:'warn', msg:`Weekend staffing level works best alongside "Weekend work is mandatory for everyone" — without it, weekends fill like any other day.`});
   return out;
+}
+
+function renderPresetBar() {
+  const sel = document.getElementById('presetSelect');
+  const presets = loadPresets();
+  sel.innerHTML = `<option value="">Current (unsaved) rules</option>` +
+    presets.map(p => `<option value="${p.id}" ${p.id===activePresetId?'selected':''}>${esc(p.name)} (${p.rules.length} rules)</option>`).join('');
+  if (!activePresetId) sel.value = '';
+  const hasSel = !!sel.value;
+  document.getElementById('btnPresetLoad').disabled = !hasSel;
+  document.getElementById('btnPresetUpdate').disabled = !hasSel;
+  document.getElementById('btnPresetDelete').disabled = !hasSel;
+}
+
+/* Simulate before saving: run the scheduler with one rule's enabled flag
+   flipped, compare to the currently generated roster, and show the diff —
+   all without touching `state` or `result`. */
+function previewRule(ruleId) {
+  const box = document.getElementById('preview-' + ruleId);
+  if (!box) return;
+  if (!box.classList.contains('hidden')) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+  if (!result) { box.classList.remove('hidden'); box.innerHTML = `<div class="alert warn">Generate a schedule first, so there is something to compare against.</div>`; return; }
+
+  const rule = state.rules.find(r => r.id === ruleId);
+  if (!rule) return;
+  const trialRules = JSON.parse(JSON.stringify(state.rules));
+  const trial = trialRules.find(r => r.id === ruleId);
+  trial.enabled = !trial.enabled;
+
+  const savedRules = state.rules, savedResult = result;
+  state.rules = trialRules;
+  let trialResult;
+  try { trialResult = computeSchedule(); } finally { state.rules = savedRules; }
+
+  // diff, person by person, day by day
+  let changed = 0, gained = [], lost = [];
+  savedResult.days.forEach(d => {
+    const k = iso(d);
+    state.staff.forEach(s => {
+      const before = (savedResult.schedule[k]||[]).includes(s.id);
+      const after  = (trialResult.schedule[k]||[]).includes(s.id);
+      if (before !== after) {
+        changed++;
+        (after ? gained : lost).push(`${s.name} on ${pretty(d)}`);
+      }
+    });
+  });
+  const verb = rule.enabled ? 'Turning this rule off' : 'Turning this rule on';
+  box.classList.remove('hidden');
+  if (!changed) {
+    box.innerHTML = `<div class="alert ok">${esc(verb)} would change nothing in the current roster.</div>`;
+    return;
+  }
+  const list = (label, arr) => arr.length ? `<div><b>${label} (${arr.length}):</b> ${arr.slice(0,8).map(esc).join('; ')}${arr.length>8?` … and ${arr.length-8} more`:''}</div>` : '';
+  box.innerHTML = `<div class="alert warn"><b>${esc(verb)} would change ${changed} shift${changed===1?'':'s'}:</b><br>
+    ${list('Newly working', gained)}${list('Newly off', lost)}</div>
+    <div style="font-size:11.5px;color:var(--muted);margin-top:4px">Preview only &mdash; nothing has been saved. Toggle the "on" switch above to actually apply it, then Generate.</div>`;
 }
 
 function renderRuleChecks() {
@@ -1348,6 +1553,8 @@ function ruleCard(r, pri, nav) {
     rel.yieldsTo  ? `<b>Yields to:</b> ${rel.yieldsTo.map(esc).join('; ')}`   : ''
   ].filter(Boolean).join(' &nbsp;·&nbsp; ');
 
+  const impactLine = ruleImpactLine(r);
+
   return `<div class="rulecard ${def.custom?'custom':''} ${r.enabled?'':'disabled'} ${r.id===freshRuleId?'fresh':''}">
     <div class="head">
       <span class="pri" title="Priority ${pri} — the order rules are applied in">${pri}</span>
@@ -1362,12 +1569,32 @@ function ruleCard(r, pri, nav) {
         <button class="btn sm" data-rule="${r.id}" data-swap="${nav.down||''}" ${nav.down?'':'disabled'} title="${nav.down?'Move down within this tier':'Already last in its tier'}">↓</button>
       </span>
       <button class="btn sm" data-dup="${r.id}" title="Duplicate this rule">Copy</button>
+      <button class="btn sm" data-preview="${r.id}" title="See what turning this rule ${r.enabled?'off':'on'} would change, without saving anything">Preview</button>
       <button class="btn sm danger" data-delrule="${r.id}">Delete</button>
     </div>
+    <div class="previewbox hidden" id="preview-${r.id}"></div>
     <div class="params">${params}</div>
     <div class="summary">${esc(def.summary(r.p, state))} <span class="pill ${r.hard?'hard':'soft'}">${r.hard?'never broken':'can bend for coverage'}</span></div>
     ${relLine ? `<div class="relates">${relLine}</div>` : ''}
+    ${impactLine}
   </div>`;
+}
+
+/* How much this rule actually did in the last generated roster, so you can
+   spot rules that never fire (dead weight) or fire on every single day
+   (maybe too strict). Empty until a schedule has been generated. */
+function ruleImpactLine(r) {
+  if (!result || !result.days.length) return '';
+  const i = result.impact[r.id];
+  const total = result.days.filter(d => !result.closedDays[iso(d)]).length;
+  if (!i || !i.dayCount) return `<div class="impact zero">Had no effect on the last generated roster.</div>`;
+  const parts = [];
+  if (i.forced)   parts.push(`required attendance ${i.forced}×`);
+  if (i.blocked)  parts.push(`blocked or bumped someone ${i.blocked}×`);
+  if (i.softened) parts.push(`softened a preference ${i.softened}×`);
+  if (i.overrode) parts.push(`overrode ${i.overrode} request${i.overrode===1?'':'s'}`);
+  return `<div class="impact">Acted on ${i.dayCount} of ${total} day(s) this cycle` +
+    (parts.length ? ` — ${parts.join(', ')}.` : '.') + `</div>`;
 }
 
 function fieldHtml(r, f) {
@@ -1483,6 +1710,47 @@ newRuleName.onkeydown = e => { if (e.key === 'Enter') document.getElementById('b
 
 document.getElementById('btnAddTemplate').onclick = () =>
   addRule(mkRule(document.getElementById('newRuleType').value, {}, undefined));
+
+/* rule set presets */
+document.getElementById('btnPresetLoad').onclick = () => {
+  const id = document.getElementById('presetSelect').value;
+  const preset = loadPresets().find(p => p.id === id);
+  if (!preset) return;
+  if (!confirm(`Replace the current rules with "${preset.name}" (${preset.rules.length} rules)? Your current rules will be lost unless already saved.`)) return;
+  state.rules = JSON.parse(JSON.stringify(preset.rules));
+  activePresetId = preset.id;
+  save(); renderRules(); updateCounts();
+};
+document.getElementById('btnPresetSaveAs').onclick = () => {
+  const name = prompt('Name this rule set (e.g. "Festive season", "Normal trading"):');
+  if (!name || !name.trim()) return;
+  const presets = loadPresets();
+  const p = {id: uid(), name: name.trim(), rules: JSON.parse(JSON.stringify(state.rules))};
+  presets.push(p); savePresets(presets);
+  activePresetId = p.id;
+  renderRules();
+};
+document.getElementById('btnPresetUpdate').onclick = () => {
+  const id = document.getElementById('presetSelect').value;
+  const presets = loadPresets();
+  const p = presets.find(x => x.id === id);
+  if (!p) return;
+  if (!confirm(`Overwrite "${p.name}" with the current ${state.rules.length} rules?`)) return;
+  p.rules = JSON.parse(JSON.stringify(state.rules));
+  savePresets(presets);
+  renderRules();
+};
+document.getElementById('btnPresetDelete').onclick = () => {
+  const id = document.getElementById('presetSelect').value;
+  const presets = loadPresets();
+  const p = presets.find(x => x.id === id);
+  if (!p) return;
+  if (!confirm(`Delete the saved rule set "${p.name}"? This does not touch your current rules.`)) return;
+  savePresets(presets.filter(x => x.id !== id));
+  if (activePresetId === id) activePresetId = null;
+  renderRules();
+};
+document.getElementById('presetSelect').onchange = () => { activePresetId = document.getElementById('presetSelect').value || null; renderPresetBar(); };
 
 document.getElementById('btnAddReq').onclick = () => {
   const d = document.getElementById('reqDate').value;
