@@ -121,6 +121,19 @@
   .rulecard{border:1px solid var(--line);border-radius:9px;padding:12px;margin-bottom:10px;background:#fff}
   .rulecard.fresh{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
   .rulecard.custom{border-left:3px solid var(--accent)}
+  .rulecard .relates{margin-top:6px;font-size:11.5px;color:var(--muted);padding-left:2px}
+  .rulecard .relates b{color:#4b5563;font-weight:600}
+  .rulecard .head .pri{flex:0 0 auto;width:20px;height:20px;border-radius:50%;background:var(--ink);color:#fff;
+    font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center}
+  .rulecard.disabled .head .pri{background:var(--off)}
+  .navbtns{display:inline-flex;gap:2px;flex:0 0 auto}
+  .navbtns .btn[disabled]{opacity:.3;cursor:default}
+  .tierhead{display:flex;gap:9px;align-items:flex-start;margin:16px 0 8px}
+  .tierhead:first-child{margin-top:0}
+  .tierhead .tiernum{flex:0 0 auto;width:20px;height:20px;border-radius:5px;background:var(--accent-soft);color:var(--accent);
+    font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;margin-top:1px}
+  .tierhead b{font-size:12px;letter-spacing:.2px}
+  .tierhead span{display:block;font-size:11.5px;color:var(--muted);line-height:1.35}
   .templaterow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:-6px 0 16px;font-size:12px;color:var(--muted)}
   .templaterow select{flex:1 1 200px;min-width:0;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:#fff;font-size:12px}
   .rulename{font-weight:650;font-size:13px;flex:1 1 160px;min-width:0}
@@ -290,7 +303,8 @@
   <div class="split">
     <div class="panel">
       <h2>Scheduling rules</h2>
-      <p class="hint">Rules are evaluated top to bottom each day. <b>Hard</b> rules can never be broken; <b>soft</b> rules bend when coverage would otherwise fail. Add, edit or disable any rule &mdash; then regenerate.</p>
+      <p class="hint">Rules are listed in the order the scheduler applies them. The numbered <b>tiers</b> are fixed &mdash; they are how the engine works &mdash; but you can reorder rules <b>within</b> a tier with &uarr;&darr;, and that is where order changes the outcome. <b>Hard</b> rules are never broken; <b>soft</b> rules bend when coverage would otherwise fail.</p>
+      <div id="ruleChecks"></div>
       <div class="addbar">
         <div class="field" style="flex:1;min-width:210px"><label>New rule &mdash; give it a name</label>
           <input type="text" id="newRuleName" placeholder="e.g. Only 2 cashiers on Sundays">
@@ -347,20 +361,52 @@ const parseISO = s => { const [y,m,d] = s.split('-').map(Number); return new Dat
 const isWeekend = d => d.getDay() === 0 || d.getDay() === 6;
 const pretty = d => `${WD[d.getDay()]} ${d.getDate()} ${d.toLocaleString('en',{month:'short'})}`;
 
+/* ---- Precedence tiers: the order the scheduler actually applies rules in.
+       Tiers are fixed (they reflect how the engine works); order *within* a
+       tier is yours to set, and that is where reordering changes outcomes. ---- */
+const TIERS = [
+  {id:1, name:'Store opening',        note:'Decides whether the day happens at all. Nothing else runs on a closed day.'},
+  {id:2, name:'Mandatory attendance', note:'Who must be rostered. Outranks capacity limits and rest protection.'},
+  {id:3, name:'Absolute blocks',      note:'Who cannot be rostered under any circumstances. Beats mandatory attendance.'},
+  {id:4, name:'Capacity limits',      note:'How many may work. A weekend-specific limit beats the general one.'},
+  {id:5, name:'Rest protection',      note:'Guards days off and consecutive-day runs. Yields to mandatory attendance.'},
+  {id:6, name:'Coverage floors',      note:'Minimums that pull people in, displacing others if they must.'},
+  {id:7, name:'Preferences',          note:'Soft. Bends whenever a hard rule needs it to.'}
+];
+const tierOf = r => { const d = RULE_TYPES[r.type]; return typeof d.tier === 'function' ? d.tier(r.p) : (d.tier || 4); };
+const tierInfo = id => TIERS.find(t => t.id === id) || TIERS[3];
+
 /* ---- Rule catalog: this is what makes rules dynamic ---- */
 const RULE_TYPES = {
   store_closed: {
     label: 'Store closed (weekly holiday)',
     desc: 'The store does not open on these weekdays, so nobody is rostered. Closed days are not counted as anyone\'s day off.',
+    tier: 1,
+    relates: {overrides: ['every other rule, on that day']},
     defaultHard: true,
     fields: [{k:'days', label:'Closed on', type:'weekdaymulti', def:[2]}],
     summary: p => (p.days||[]).length
       ? `Store is closed every ${p.days.map(d => WD_FULL[d]).join(', ')} — nobody is scheduled.`
       : 'No closed days chosen yet.'
   },
+  weekend_capacity: {
+    label: 'Weekend staffing level (min and max)',
+    desc: 'How many staff a weekend day actually needs. This is the ceiling the weekend mandate fills up to, so you get a busy weekend without rostering everyone and overshooting capacity. When more staff are mandated than the maximum, the spare weekend off rotates fairly.',
+    tier: 4,
+    relates: {needs: ['Weekend work is mandatory for everyone'],
+              overrides: ['Maximum staff scheduled per day, on weekends']},
+    defaultHard: true,
+    fields: [
+      {k:'min', label:'Minimum on a weekend day', type:'number', def:6, min:0},
+      {k:'max', label:'Maximum on a weekend day', type:'number', def:7, min:1}
+    ],
+    summary: p => `Weekend days run with ${p.min}–${p.max} staff.` +
+      (+p.min > +p.max ? ' ⚠ minimum is above the maximum.' : '')
+  },
   max_per_day: {
     label: 'Maximum staff scheduled per day',
     desc: 'Caps how many people can work on a given day.',
+    tier: 4,
     defaultHard: true,
     fields: [
       {k:'n', label:'Max people', type:'number', def:6, min:1},
@@ -371,6 +417,8 @@ const RULE_TYPES = {
   min_per_day: {
     label: 'Minimum staff scheduled per day',
     desc: 'Coverage floor. If it cannot be met, soft rules and preferences are overridden.',
+    tier: 6,
+    relates: {overrides: ['day-off preferences, when coverage would otherwise fail']},
     defaultHard: true,
     fields: [
       {k:'n', label:'Min people', type:'number', def:4, min:0},
@@ -381,6 +429,8 @@ const RULE_TYPES = {
   weekend_mandatory: {
     label: 'Weekend work is mandatory for everyone',
     desc: 'Weekends are the busiest trading days, so this outranks the daily cap and the rest-day limits — the roster adjusts around it. The only exceptions are staff ticked "Weekend off allowed" on the Staff tab.',
+    tier: 2,
+    relates: {overrides: ['Capacity limits', 'Rest protection'], needs: ['Weekend off allowed ticks on the Staff tab']},
     defaultHard: true,
     fields: [],
     summary: (p, st) => {
@@ -392,6 +442,8 @@ const RULE_TYPES = {
   max_consecutive: {
     label: 'Maximum consecutive working days',
     desc: 'Forces a break after a run of shifts.',
+    tier: 5,
+    relates: {yieldsTo: ['Weekend work is mandatory for everyone']},
     defaultHard: true,
     fields: [{k:'n', label:'Max in a row', type:'number', def:6, min:1}],
     summary: p => `No more than ${p.n} consecutive working days.`
@@ -399,6 +451,8 @@ const RULE_TYPES = {
   min_off_per_period: {
     label: 'Minimum days off per cycle',
     desc: 'Guarantees each person gets a set number of rest days in the fortnight.',
+    tier: 5,
+    relates: {yieldsTo: ['Weekend work is mandatory for everyone']},
     defaultHard: true,
     fields: [{k:'n', label:'Days off', type:'number', def:2, min:0}],
     summary: p => `Everyone gets at least ${p.n} day(s) off this cycle.`
@@ -406,6 +460,8 @@ const RULE_TYPES = {
   max_days_per_period: {
     label: 'Maximum working days per cycle',
     desc: 'Caps total shifts per person in the fortnight.',
+    tier: 5,
+    relates: {yieldsTo: ['Weekend work is mandatory for everyone']},
     defaultHard: true,
     fields: [{k:'n', label:'Max days', type:'number', def:12, min:1}],
     summary: p => `Nobody works more than ${p.n} days this cycle.`
@@ -413,6 +469,7 @@ const RULE_TYPES = {
   staff_fixed_off: {
     label: 'Specific person always off on a weekday',
     desc: 'A standing arrangement, e.g. "Ravi never works Tuesdays".',
+    tier: 3,
     defaultHard: true,
     fields: [
       {k:'staff', label:'Staff', type:'staff', def:''},
@@ -423,6 +480,7 @@ const RULE_TYPES = {
   staff_must_work: {
     label: 'Specific person always works on a weekday',
     desc: 'Key-holder or specialist coverage, e.g. "Priya always works Saturdays".',
+    tier: 2,
     defaultHard: true,
     fields: [
       {k:'staff', label:'Staff', type:'staff', def:''},
@@ -433,6 +491,8 @@ const RULE_TYPES = {
   role_coverage: {
     label: 'Minimum staff of a role per day',
     desc: 'Ensures skill coverage, e.g. "at least 1 Supervisor every day".',
+    tier: 6,
+    relates: {overrides: ['day-off preferences, when the role would otherwise be uncovered']},
     defaultHard: true,
     fields: [
       {k:'role', label:'Role', type:'text', def:'Supervisor'},
@@ -444,6 +504,7 @@ const RULE_TYPES = {
   fair_rotation: {
     label: 'Balance total shifts fairly across staff',
     desc: 'Prefers whoever has worked least when filling open slots.',
+    tier: 7,
     defaultHard: false,
     fields: [{k:'strength', label:'Strength', type:'select', options:['low','medium','high'], def:'high'}],
     summary: p => `Spread shifts evenly (${p.strength} priority).`
@@ -452,6 +513,8 @@ const RULE_TYPES = {
     label: 'Custom rule (write your own)',
     desc: 'Build any rule from scratch: pick who it applies to, what they must or may not do, and when.',
     custom: true,
+    tier: p => ({'must work':2, 'must not work':3, 'at most N of them work':4,
+                 'at least N of them work':6, 'prefer to work':7, 'prefer not to work':7}[p.action] || 7),
     defaultHard: true,
     fields: [
       {k:'name',        label:'Rule name',  type:'text',       def:'My new rule'},
@@ -541,6 +604,7 @@ function seed() {
       mkRule('store_closed', {days:[2]}, true),
       mkRule('max_per_day', {n:6, scope:'every day'}, true),
       mkRule('weekend_mandatory', {}, true),
+      mkRule('weekend_capacity', {min:6, max:7}, true),
       mkRule('min_off_per_period', {n:2}, true),
       mkRule('max_consecutive', {n:6}, true),
       mkRule('role_coverage', {role:'Supervisor', n:1, scope:'every day'}, true),
@@ -576,6 +640,13 @@ function migrate(s) {
     s.staff.forEach(st => st.weekendExempt = false);
     s.rules.forEach(r => { if (r.type === 'weekend_mandatory') delete r.p.exempt; });
   }
+  if (!s.flags.weekendCapacity) {
+    s.flags.weekendCapacity = true;
+    if (!s.rules.some(r => r.type === 'weekend_capacity')) {
+      const n = s.staff.length;
+      s.rules.push(mkRule('weekend_capacity', {min: Math.max(1, n - 2), max: Math.max(1, n - 1)}, true));
+    }
+  }
   return s;
 }
 let state = migrate(load() || seed());
@@ -606,8 +677,8 @@ function generate() {
   const active = state.rules.filter(r => r.enabled);
   const staff = state.staff;
 
-  const worked = {}, offCount = {}, streak = {};
-  staff.forEach(s => { worked[s.id] = 0; offCount[s.id] = 0; streak[s.id] = 0; });
+  const worked = {}, offCount = {}, streak = {}, wkWorked = {};
+  staff.forEach(s => { worked[s.id] = 0; offCount[s.id] = 0; streak[s.id] = 0; wkWorked[s.id] = 0; });
 
   const schedule = {};      // dateISO -> [staffId]
   const explain  = {};      // dateISO -> staffId -> {status, reasons:[]}
@@ -669,11 +740,22 @@ function generate() {
       if (+r.p.n > minCov) { minCov = +r.p.n; minRule = r; }
     });
 
-    // the weekend mandate lifts the daily cap rather than fighting it
-    let capLifted = false;
-    if (wkRule && isWeekend(day)) {
-      const need = staff.filter(s => !s.weekendExempt).length;
-      if (need > cap) { cap = need; capLifted = true; }
+    /* Capacity on a weekend. An explicit weekend staffing level is a deliberate
+       statement about weekends, so it binds — the mandate fills up to it rather
+       than past it. Without one, the mandate lifts the general cap to fit
+       everyone (which is what over-rosters). */
+    let capLifted = false, weekendCapped = false;
+    const wcRule = active.find(r => r.type === 'weekend_capacity');
+    if (isWeekend(day)) {
+      const mandatedCount = staff.filter(s => !s.weekendExempt).length;
+      if (wcRule) {
+        cap = +wcRule.p.max;
+        weekendCapped = mandatedCount > cap;
+        capLifted = !!capRule && cap > +capRule.p.n;
+        if (+wcRule.p.min > minCov) { minCov = +wcRule.p.min; minRule = wcRule; }
+      } else if (wkRule && mandatedCount > cap) {
+        cap = mandatedCount; capLifted = true;
+      }
     }
     dayCap[key] = cap;              // effective cap, so the roster displays it correctly
 
@@ -767,14 +849,25 @@ function generate() {
     blockedForced.forEach(id => ev[id].notes.push({k:'warn', t:'Rule conflict', m:`A rule requires ${nameOf(id)} to work today, but a hard limit prevents it. The limit wins.`}));
 
     if (forcedIds.length > cap) {
-      // too many mandatory people for the daily cap -> keep the fairest subset
-      const keep = forcedIds.slice().sort((a,b) => worked[a] - worked[b] || a.localeCompare(b)).slice(0, cap);
+      // More people are mandated than there is room for. On a weekend with an
+      // explicit staffing level this is the intended design, and the spare
+      // weekend off rotates by who has had the fewest weekend days off so far.
+      const rank = weekendCapped ? (id => wkWorked[id]) : (id => worked[id]);
+      // keep whoever has done the FEWEST so far; the day off goes to whoever
+      // has done the most, so it moves round the team instead of sticking
+      const keep = forcedIds.slice()
+        .sort((a,b) => rank(a) - rank(b) || worked[a] - worked[b] || a.localeCompare(b))
+        .slice(0, cap);
       keep.forEach(id => selected.add(id));
       forcedIds.filter(id => !keep.includes(id)).forEach(id => {
-        ev[id].notes.push({k:'warn', t:'Cap beats mandate',
-          m:`${nameOf(id)} is normally required today, but the daily cap of ${cap} was already filled by colleagues with fewer shifts so far (${worked[id]} worked).`});
+        ev[id].notes.push(weekendCapped
+          ? {k:'rule', t:'Weekend off (rotating)',
+             m:`Weekend staffing is capped at ${cap}, so one person rests each weekend day. ${nameOf(id)} has worked ${wkWorked[id]} weekend day(s) so far — the most of those available — so today is their weekend off. This rotates.`}
+          : {k:'warn', t:'Cap beats mandate',
+             m:`${nameOf(id)} is normally required today, but the daily cap of ${cap} was already filled by colleagues with fewer shifts so far (${worked[id]} worked).`});
       });
-      alerts.push({level:'bad', msg:`${pretty(day)}: ${forcedIds.length} staff are required by rules but the daily cap is ${cap}. ${forcedIds.length - cap} had to be given the day off.`});
+      if (!weekendCapped)
+        alerts.push({level:'bad', msg:`${pretty(day)}: ${forcedIds.length} staff are required by rules but the daily cap is ${cap}. ${forcedIds.length - cap} had to be given the day off.`});
     } else {
       forcedIds.forEach(id => selected.add(id));
     }
@@ -915,7 +1008,7 @@ function generate() {
 
     /* --- counters --- */
     staff.forEach(s => {
-      if (selected.has(s.id)) { worked[s.id]++; streak[s.id]++; }
+      if (selected.has(s.id)) { worked[s.id]++; streak[s.id]++; if (isWeekend(day)) wkWorked[s.id]++; }
       else { offCount[s.id]++; streak[s.id] = 0; }
     });
     if (alerts.length) dayAlerts[key] = alerts;
@@ -1112,8 +1205,32 @@ function renderStaff() {
    ============================================================ */
 function renderRules() {
   const list = document.getElementById('ruleList');
-  list.innerHTML = state.rules.length ? state.rules.map((r, i) => ruleCard(r, i)).join('')
-    : `<div class="empty">No rules yet — the scheduler will roster everyone every day.</div>`;
+  renderRuleChecks();
+
+  if (!state.rules.length) {
+    list.innerHTML = `<div class="empty">No rules yet — the scheduler will roster everyone every day.</div>`;
+    return;
+  }
+
+  // display order = precedence: tier first, then the user's own order inside it
+  const ordered = state.rules.map((r, idx) => ({r, idx}))
+                             .sort((a,b) => tierOf(a.r) - tierOf(b.r) || a.idx - b.idx);
+  let html = '', lastTier = null, pri = 0;
+  ordered.forEach(({r}, pos) => {
+    const t = tierOf(r);
+    if (t !== lastTier) {
+      const info = tierInfo(t);
+      html += `<div class="tierhead"><span class="tiernum">${info.id}</span>
+                 <div><b>${esc(info.name)}</b><span>${esc(info.note)}</span></div></div>`;
+      lastTier = t;
+    }
+    const prev = ordered[pos-1], next = ordered[pos+1];
+    html += ruleCard(r, ++pri, {
+      up:   prev && tierOf(prev.r) === t ? prev.r.id : null,
+      down: next && tierOf(next.r) === t ? next.r.id : null
+    });
+  });
+  list.innerHTML = html;
 
   list.querySelectorAll('[data-rid]').forEach(el => {
     const r = state.rules.find(x => x.id === el.dataset.rid);
@@ -1137,10 +1254,69 @@ function renderRules() {
   list.querySelectorAll('button[data-delrule]').forEach(b => b.onclick = () => {
     state.rules = state.rules.filter(r => r.id !== b.dataset.delrule); save(); renderRules(); updateCounts();
   });
-  list.querySelectorAll('button[data-up]').forEach(b => b.onclick = () => {
-    const i = state.rules.findIndex(r => r.id === b.dataset.up);
-    if (i > 0) { [state.rules[i-1], state.rules[i]] = [state.rules[i], state.rules[i-1]]; save(); renderRules(); }
+  list.querySelectorAll('button[data-dup]').forEach(b => b.onclick = () => {
+    const src = state.rules.find(r => r.id === b.dataset.dup);
+    const copy = JSON.parse(JSON.stringify(src));
+    copy.id = uid();
+    if (copy.p.name) copy.p.name += ' (copy)';
+    state.rules.splice(state.rules.indexOf(src) + 1, 0, copy);
+    freshRuleId = copy.id; save(); renderRules(); updateCounts();
   });
+  // swap with the neighbour inside the same tier — order only matters there
+  list.querySelectorAll('button[data-swap]').forEach(b => b.onclick = () => {
+    const i = state.rules.findIndex(r => r.id === b.dataset.rule);
+    const j = state.rules.findIndex(r => r.id === b.dataset.swap);
+    if (i >= 0 && j >= 0) { [state.rules[i], state.rules[j]] = [state.rules[j], state.rules[i]]; save(); renderRules(); }
+  });
+}
+
+/* ---- static sanity checks: contradictions you can see without scheduling ---- */
+function ruleChecks() {
+  const on = state.rules.filter(r => r.enabled), out = [];
+  const n = state.staff.length;
+  const find = t => on.find(r => r.type === t);
+
+  const wc = find('weekend_capacity');
+  if (wc) {
+    if (+wc.p.min > +wc.p.max) out.push({level:'bad', msg:`Weekend staffing level: the minimum (${wc.p.min}) is above the maximum (${wc.p.max}). No day can satisfy both.`});
+    if (+wc.p.min > n) out.push({level:'bad', msg:`Weekend staffing level asks for at least ${wc.p.min} staff, but you only have ${n}.`});
+    if (+wc.p.max > n) out.push({level:'warn', msg:`Weekend maximum (${wc.p.max}) is above your headcount (${n}), so it never actually limits anything.`});
+  }
+  on.filter(r => r.type === 'max_per_day').forEach(mx => {
+    on.filter(r => r.type === 'min_per_day' && r.p.scope === mx.p.scope).forEach(mn => {
+      if (+mn.p.n > +mx.p.n) out.push({level:'bad', msg:`On ${mx.p.scope}, the minimum staff (${mn.p.n}) is above the maximum (${mx.p.n}).`});
+    });
+    if (+mx.p.n > n) out.push({level:'warn', msg:`Maximum staff per day (${mx.p.n}) is above your headcount (${n}), so it never limits anything.`});
+  });
+  on.filter(r => r.type === 'min_per_day').forEach(mn => {
+    if (+mn.p.n > n) out.push({level:'bad', msg:`Minimum staff per day (${mn.p.n}) is above your headcount (${n}).`});
+  });
+  on.filter(r => r.type === 'role_coverage').forEach(r => {
+    const have = state.staff.filter(s => (s.role||'').toLowerCase() === (r.p.role||'').toLowerCase()).length;
+    if (!have) out.push({level:'bad', msg:`Role coverage wants ${r.p.n} "${r.p.role}", but nobody has that role. Check the spelling on the Staff tab.`});
+    else if (have < +r.p.n) out.push({level:'bad', msg:`Role coverage wants ${r.p.n} "${r.p.role}" every day, but only ${have} staff have that role.`});
+  });
+  on.filter(r => r.type === 'custom').forEach(r => {
+    const who = subjectIds(r.p);
+    if (!who.length) out.push({level:'warn', msg:`"${r.p.name || 'Custom rule'}" currently applies to nobody, so it has no effect.`});
+    if (r.p.when === 'a specific date' && !r.p.date) out.push({level:'warn', msg:`"${r.p.name || 'Custom rule'}" has no date chosen yet.`});
+  });
+  on.filter(r => r.type === 'staff_fixed_off' || r.type === 'staff_must_work').forEach(r => {
+    if (!r.p.staff) out.push({level:'warn', msg:`"${RULE_TYPES[r.type].label}" has no staff member chosen yet.`});
+  });
+  const sc = find('store_closed');
+  if (sc && !(sc.p.days||[]).length) out.push({level:'warn', msg:`Store closed rule has no days ticked, so the store never closes.`});
+  if (find('weekend_capacity') && !find('weekend_mandatory'))
+    out.push({level:'warn', msg:`Weekend staffing level works best alongside "Weekend work is mandatory for everyone" — without it, weekends fill like any other day.`});
+  return out;
+}
+
+function renderRuleChecks() {
+  const box = document.getElementById('ruleChecks');
+  const c = ruleChecks();
+  box.innerHTML = c.length
+    ? c.map(x => `<div class="alert ${x.level}">${esc(x.msg)}</div>`).join('')
+    : `<div class="alert ok">No contradictions found between the active rules.</div>`;
 }
 
 let freshRuleId = null;
@@ -1159,24 +1335,38 @@ function visibleCustomFields(p) {
   return show;
 }
 
-function ruleCard(r, i) {
+function ruleCard(r, pri, nav) {
   const def = RULE_TYPES[r.type];
   const typeOpts = Object.entries(RULE_TYPES).map(([k, v]) => `<option value="${k}" ${k===r.type?'selected':''}>${v.label}</option>`).join('');
   const shown = def.custom ? visibleCustomFields(r.p) : null;
   const params = def.fields.filter(f => !shown || shown.includes(f.k)).map(f => fieldHtml(r, f)).join('');
+
+  const rel = def.relates || {};
+  const relLine = [
+    rel.needs     ? `<b>Works with:</b> ${rel.needs.map(esc).join('; ')}`     : '',
+    rel.overrides ? `<b>Overrides:</b> ${rel.overrides.map(esc).join('; ')}`  : '',
+    rel.yieldsTo  ? `<b>Yields to:</b> ${rel.yieldsTo.map(esc).join('; ')}`   : ''
+  ].filter(Boolean).join(' &nbsp;·&nbsp; ');
+
   return `<div class="rulecard ${def.custom?'custom':''} ${r.enabled?'':'disabled'} ${r.id===freshRuleId?'fresh':''}">
     <div class="head">
+      <span class="pri" title="Priority ${pri} — the order rules are applied in">${pri}</span>
       <label class="switch"><input type="checkbox" data-rid="${r.id}" data-field="enabled" ${r.enabled?'checked':''}> on</label>
       <select data-rid="${r.id}" data-field="type">${typeOpts}</select>
       <select data-rid="${r.id}" data-field="hard" style="flex:0 0 auto;padding:5px 7px;border:1px solid var(--line);border-radius:6px;font-size:12px">
         <option value="hard" ${r.hard?'selected':''}>Hard</option>
         <option value="soft" ${!r.hard?'selected':''}>Soft</option>
       </select>
-      ${i>0?`<button class="btn sm" data-up="${r.id}" title="Move up">↑</button>`:''}
+      <span class="navbtns">
+        <button class="btn sm" data-rule="${r.id}" data-swap="${nav.up||''}" ${nav.up?'':'disabled'} title="${nav.up?'Move up within this tier':'Already first in its tier'}">↑</button>
+        <button class="btn sm" data-rule="${r.id}" data-swap="${nav.down||''}" ${nav.down?'':'disabled'} title="${nav.down?'Move down within this tier':'Already last in its tier'}">↓</button>
+      </span>
+      <button class="btn sm" data-dup="${r.id}" title="Duplicate this rule">Copy</button>
       <button class="btn sm danger" data-delrule="${r.id}">Delete</button>
     </div>
     <div class="params">${params}</div>
     <div class="summary">${esc(def.summary(r.p, state))} <span class="pill ${r.hard?'hard':'soft'}">${r.hard?'never broken':'can bend for coverage'}</span></div>
+    ${relLine ? `<div class="relates">${relLine}</div>` : ''}
   </div>`;
 }
 

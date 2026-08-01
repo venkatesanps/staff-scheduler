@@ -43,9 +43,29 @@ The card shows your rule as a sentence as you build it, e.g. *"At least 2 Superv
 
 Ready-made rules cover the common cases: **store closed (weekly holiday)**, max/min staff per day, mandatory weekends with exceptions, max consecutive days, minimum days off per cycle, maximum working days per cycle, standing days off, fixed working days, role coverage, and fair rotation.
 
+### Rule priority
+
+Rules are listed in the order the scheduler applies them, grouped into seven **precedence tiers**:
+
+| Tier | | |
+|---|---|---|
+| 1 | Store opening | Decides whether the day happens at all |
+| 2 | Mandatory attendance | Who must be rostered; outranks capacity and rest |
+| 3 | Absolute blocks | Who cannot be rostered, whatever else says |
+| 4 | Capacity limits | How many may work |
+| 5 | Rest protection | Days off and consecutive-day runs |
+| 6 | Coverage floors | Minimums that pull people in |
+| 7 | Preferences | Soft; bends for any hard rule |
+
+The tiers are fixed — they're how the engine works, and pretending otherwise would be misleading. **Order within a tier is yours**, adjustable with ↑↓, and that's where reordering actually changes the roster. Each card also shows what it *works with*, *overrides*, or *yields to*.
+
+The Rules tab continuously checks for contradictions you can spot without scheduling — a minimum above a maximum, a role nobody has, a rule that applies to nobody — and reports them above the list.
+
 ### Weekends
 
-Most of the trade happens at the weekend, so **weekend work is mandatory for everyone and outranks the other rules**. On a Saturday or Sunday the daily cap is lifted to fit every staff member, and the rest-day limits (max consecutive days, max days per cycle, personal caps) don't hold anyone back. The roster absorbs this automatically — rest days are booked onto weekdays instead, early enough that a "minimum days off per cycle" rule is still met in full.
+Most of the trade happens at the weekend, so **weekend work is mandatory for everyone and outranks the other rules**: the rest-day limits (max consecutive days, max days per cycle, personal caps) don't hold anyone back, and rest days are booked onto weekdays instead — early enough that a "minimum days off per cycle" rule is still met in full.
+
+**Weekend staffing level** sets how many people a weekend day actually needs, as a min and a max. This is the ceiling the mandate fills up to, so you get a busy weekend without rostering every single person and overshooting capacity. When more staff are mandated than the maximum, the spare weekend off **rotates** — it goes to whoever has worked the most weekend days so far, so it moves round the team rather than always landing on the same person.
 
 **The only way to except someone is the "Weekend off allowed" tick on the Staff tab.** It starts empty — nobody is excepted by default. There is no exception list on the rule itself, so there's exactly one place to look.
 
