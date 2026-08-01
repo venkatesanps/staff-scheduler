@@ -20,7 +20,7 @@ or, when a preference can't be met:
 
 ## Features
 
-- **Staff** — add and remove people at any time; set role, a personal cap on working days, and a "weekend-off eligible" flag for the exceptional staff who are allowed weekends off.
+- **Staff** — add and remove people at any time; set role, a personal cap on working days, and the **Weekend off allowed** tick that excepts someone from mandatory weekend work.
 - **Rules** — build your own rules from scratch, or start from a ready-made one. Each rule can be toggled on/off, reordered, and set as **hard** (never broken) or **soft** (bends when coverage would otherwise fail).
 - **Time-off requests** — each person can request days off or days they'd prefer to work, at normal or urgent priority. Every request is reported back as honoured or not, with the reason.
 - **Explanations** — per person, per day, in plain English, using your own rule names.
@@ -42,6 +42,12 @@ Name it, then compose it from a small grammar:
 The card shows your rule as a sentence as you build it, e.g. *"At least 2 Supervisors work on weekends."* That name and sentence are what appear in the explanations.
 
 Ready-made rules cover the common cases: **store closed (weekly holiday)**, max/min staff per day, mandatory weekends with exceptions, max consecutive days, minimum days off per cycle, maximum working days per cycle, standing days off, fixed working days, role coverage, and fair rotation.
+
+### Weekends
+
+Most of the trade happens at the weekend, so **weekend work is mandatory for everyone and outranks the other rules**. On a Saturday or Sunday the daily cap is lifted to fit every staff member, and the rest-day limits (max consecutive days, max days per cycle, personal caps) don't hold anyone back. The roster absorbs this automatically — rest days are booked onto weekdays instead, early enough that a "minimum days off per cycle" rule is still met in full.
+
+**The only way to except someone is the "Weekend off allowed" tick on the Staff tab.** It starts empty — nobody is excepted by default. There is no exception list on the rule itself, so there's exactly one place to look.
 
 ### Store holidays
 

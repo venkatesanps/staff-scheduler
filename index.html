@@ -275,7 +275,7 @@
 <section id="tab-staff" class="hidden">
   <div class="panel">
     <h2>Staff list</h2>
-    <p class="hint">Add or remove people at any time. "Weekend-off eligible" marks the exceptional staff who are allowed weekends off.</p>
+    <p class="hint">Add or remove people at any time. Weekends are mandatory for everyone by default &mdash; ticking <b>Weekend off allowed</b> here is the only way to except someone, and it overrides the weekend rule for that person.</p>
     <div class="addbar">
       <div class="field"><label>Name</label><input type="text" id="newStaffName" placeholder="e.g. Suganthi"></div>
       <div class="field"><label>Role</label><input type="text" id="newStaffRole" placeholder="e.g. Cashier"></div>
@@ -379,11 +379,15 @@ const RULE_TYPES = {
     summary: p => `At least ${p.n} staff on ${p.scope}.`
   },
   weekend_mandatory: {
-    label: 'Weekend work is mandatory (with exceptions)',
-    desc: 'Everyone must work weekends, except the staff you mark as exceptions.',
+    label: 'Weekend work is mandatory for everyone',
+    desc: 'Weekends are the busiest trading days, so this outranks the daily cap and the rest-day limits — the roster adjusts around it. The only exceptions are staff ticked "Weekend off allowed" on the Staff tab.',
     defaultHard: true,
-    fields: [{k:'exempt', label:'Exceptional staff allowed weekends off', type:'staffmulti', def:[]}],
-    summary: (p, st) => `Weekends are mandatory for everyone except ${p.exempt.length ? p.exempt.map(id=>nameOf(id,st)).join(', ') : 'nobody'}.`
+    fields: [],
+    summary: (p, st) => {
+      const ex = (st || state).staff.filter(s => s.weekendExempt).map(s => s.name);
+      return `Everyone works weekends — this overrides the daily cap and rest-day limits. ` +
+             (ex.length ? `Exceptions (set on the Staff tab): ${ex.join(', ')}.` : `Nobody is currently excepted.`);
+    }
   },
   max_consecutive: {
     label: 'Maximum consecutive working days',
@@ -522,7 +526,8 @@ function seed() {
     ['Suganthi','Cashier'], ['Meena','Sales'], ['Arjun','Stock'], ['Priya','Supervisor'],
     ['Ravi','Sales'], ['Kavya','Cashier'], ['Deepak','Stock'], ['Anitha','Supervisor']
   ];
-  const staff = names.map(([name, role]) => ({ id: uid(), name, role, weekendExempt: name === 'Anitha', maxDays: null }));
+  // nobody is exempt from weekends by default — exceptions are ticked on the Staff tab
+  const staff = names.map(([name, role]) => ({ id: uid(), name, role, weekendExempt: false, maxDays: null }));
 
   const nextDow = dow => { const d = new Date(today); d.setDate(d.getDate() + ((dow - d.getDay() + 7) % 7 || 7)); return iso(d); };
   const sug = staff[0].id;
@@ -535,7 +540,7 @@ function seed() {
     rules: [
       mkRule('store_closed', {days:[2]}, true),
       mkRule('max_per_day', {n:6, scope:'every day'}, true),
-      mkRule('weekend_mandatory', {exempt:[staff[7].id]}, true),
+      mkRule('weekend_mandatory', {}, true),
       mkRule('min_off_per_period', {n:2}, true),
       mkRule('max_consecutive', {n:6}, true),
       mkRule('role_coverage', {role:'Supervisor', n:1, scope:'every day'}, true),
@@ -564,6 +569,12 @@ function migrate(s) {
   if (!s.flags.storeClosed) {
     s.flags.storeClosed = true;
     if (!s.rules.some(r => r.type === 'store_closed')) s.rules.unshift(mkRule('store_closed', {days:[2]}, true));
+  }
+  if (!s.flags.weekendFromStaff) {
+    s.flags.weekendFromStaff = true;
+    // weekend exceptions now live only on the Staff tab, and start empty
+    s.staff.forEach(st => st.weekendExempt = false);
+    s.rules.forEach(r => { if (r.type === 'weekend_mandatory') delete r.p.exempt; });
   }
   return s;
 }
@@ -608,8 +619,9 @@ function generate() {
 
   // days the store does not open at all
   const closedOn = d => active.find(r => r.type === 'store_closed' && (r.p.days||[]).map(Number).includes(d.getDay()));
-  const closedDays = {};
-  let openLeft = days.filter(d => !closedOn(d)).length;
+  const closedDays = {}, dayCap = {};
+  const openDays = days.filter(d => !closedOn(d));
+  let openIdx = 0;
 
   days.forEach((day, dayIdx) => {
     const key = iso(day);
@@ -633,8 +645,16 @@ function generate() {
       return;
     }
 
-    const remainingIncl = openLeft;   // open days left in the cycle, including today
-    openLeft--;
+    const remainingOpen = openDays.slice(openIdx);   // open days left, including today
+    openIdx++;
+    const remainingIncl = remainingOpen.length;
+
+    /* Weekend trade is the priority: on a weekend, every staff member not ticked
+       "Weekend off allowed" on the Staff tab must work, and that outranks the
+       daily cap and the rest-day limits. Rest days move to weekdays instead. */
+    const wkRule = active.find(r => r.type === 'weekend_mandatory' && r.hard);
+    const mandated = s => !!wkRule && isWeekend(day) && !s.weekendExempt;
+    const canBeOffOn = (s, d2) => !(wkRule && isWeekend(d2) && !s.weekendExempt);
     const ev = {};
     staff.forEach(s => ev[s.id] = { force:[], hard:[], soft:[], notes:[], prefWork:false });
     const alerts = [];
@@ -649,31 +669,47 @@ function generate() {
       if (+r.p.n > minCov) { minCov = +r.p.n; minRule = r; }
     });
 
+    // the weekend mandate lifts the daily cap rather than fighting it
+    let capLifted = false;
+    if (wkRule && isWeekend(day)) {
+      const need = staff.filter(s => !s.weekendExempt).length;
+      if (need > cap) { cap = need; capLifted = true; }
+    }
+    dayCap[key] = cap;              // effective cap, so the roster displays it correctly
+
     /* --- per-rule evaluation --- */
     active.forEach(r => {
       const t = r.type, P = r.p;
       if (t === 'weekend_mandatory' && isWeekend(day)) {
         staff.forEach(s => {
-          if (P.exempt.includes(s.id) || s.weekendExempt) {
-            ev[s.id].notes.push({k:'rule', t:'Weekend exception', m:`${s.name} is an exceptional staff member allowed weekends off.`});
+          if (s.weekendExempt) {
+            ev[s.id].notes.push({k:'rule', t:'Weekend exception', m:`${s.name} is ticked "Weekend off allowed" on the Staff tab, so the weekend mandate does not apply.`});
           } else {
-            ev[s.id].force.push({k:'rule', t:'Weekend coverage', m:`Weekend work is mandatory for all staff except designated exceptions.`, hard:r.hard});
+            ev[s.id].force.push({k:'rule', t:'Weekend coverage',
+              m:`Weekend work is mandatory for everyone — most of the trade happens at the weekend.` +
+                (capLifted ? ` This outranks the daily cap of ${capRule ? capRule.p.n : cap}, which was lifted to fit all ${cap} staff.` : ''), hard:r.hard});
           }
         });
       }
       if (t === 'max_consecutive') {
-        staff.forEach(s => { if (streak[s.id] >= +P.n)
+        staff.forEach(s => { if (streak[s.id] >= +P.n && !mandated(s))
           ev[s.id].hard.push({k:'block', t:'Consecutive-day limit', m:`Already worked ${streak[s.id]} days in a row (limit ${P.n}). A rest day is required.`}); });
       }
       if (t === 'max_days_per_period') {
-        staff.forEach(s => { if (worked[s.id] >= +P.n)
+        staff.forEach(s => { if (worked[s.id] >= +P.n && !mandated(s))
           ev[s.id].hard.push({k:'block', t:'Cycle limit', m:`Already scheduled ${worked[s.id]} days this cycle (max ${P.n}).`}); });
       }
       if (t === 'min_off_per_period') {
         staff.forEach(s => {
+          if (mandated(s)) return;                       // cannot take today off anyway
           const need = +P.n - offCount[s.id];
-          if (need >= remainingIncl && need > 0)
-            ev[s.id].hard.push({k:'block', t:'Guaranteed rest days', m:`Needs ${need} more day(s) off and only ${remainingIncl} day(s) remain in the cycle, so today must be off.`});
+          if (need <= 0) return;
+          // only days this person could actually be off count towards the deadline,
+          // so weekday rest is booked early rather than clashing with the weekend
+          const offCapable = remainingOpen.filter(d2 => canBeOffOn(s, d2)).length;
+          if (need >= offCapable)
+            ev[s.id].hard.push({k:'block', t:'Guaranteed rest days',
+              m:`Needs ${need} more day(s) off and only ${offCapable} non-weekend day(s) remain in the cycle, so today must be off.`});
         });
       }
       if (t === 'staff_fixed_off' && day.getDay() === +P.weekday) {
@@ -705,7 +741,7 @@ function generate() {
     });
 
     /* --- staff-level max days --- */
-    staff.forEach(s => { if (s.maxDays && worked[s.id] >= +s.maxDays)
+    staff.forEach(s => { if (s.maxDays && worked[s.id] >= +s.maxDays && !mandated(s))
       ev[s.id].hard.push({k:'block', t:'Personal cap', m:`${s.name}'s personal limit of ${s.maxDays} days this cycle is reached.`}); });
 
     /* --- requests --- */
@@ -852,7 +888,9 @@ function generate() {
         if (e.hard.length) { e.hard.forEach(h => reasons.push(h)); if (e.force.length) status = 'denied'; }
         else if (e.soft.length) { e.soft.forEach(sf => reasons.push({...sf, t:sf.t + ' — honoured'})); }
         else if (e.force.length) { status = 'denied'; }
-        else {
+        else if (!(wkRule && isWeekend(day) && s.weekendExempt)) {
+          // (an excepted staff member off at the weekend is explained by the
+          //  "Weekend exception" note below, not by the daily cap)
           reasons.push({k:'block', t:'Not needed today',
             m:`The daily cap of ${cap} was reached first. ${s.name} has worked ${worked[s.id]} day(s) this cycle; colleagues with fewer shifts were rostered ahead.`});
         }
@@ -891,7 +929,7 @@ function generate() {
       globalAlerts.push({level:'warn', msg:`${s.name} got only ${offCount[s.id]} day(s) off — the rule asks for ${minOffRule.p.n}.`});
   });
 
-  result = {days, schedule, explain, worked, offCount, dayAlerts, globalAlerts, reqOutcome, closedDays};
+  result = {days, schedule, explain, worked, offCount, dayAlerts, globalAlerts, reqOutcome, closedDays, dayCap};
   selectedCell = null;
   renderSchedule();
 }
@@ -932,12 +970,7 @@ function renderSchedule() {
   }
   const {days, schedule, explain, worked, offCount} = result;
 
-  let cap = {};
-  days.forEach(d => {
-    let c = state.staff.length;
-    state.rules.filter(r => r.enabled && r.type === 'max_per_day' && scopeMatches(r.p.scope, d)).forEach(r => c = Math.min(c, +r.p.n));
-    cap[iso(d)] = c;
-  });
+  const cap = result.dayCap;   // effective cap per day, as the scheduler actually applied it
 
   // fixed column widths: name column + equal day columns + a narrow total
   let h =`<colgroup><col style="width:${nameW}px">${days.map(()=>'<col>').join('')}<col style="width:34px"></colgroup>`;
@@ -950,7 +983,7 @@ function renderSchedule() {
 
   state.staff.forEach(s => {
     h += `<tr><td class="namecol" title="${esc(s.name)}${s.role?' — '+esc(s.role):''}">` +
-         `<span class="nm">${esc(s.name)}${s.weekendExempt?'<span class="chip" title="Weekend-off eligible">W</span>':''}</span>` +
+         `<span class="nm">${esc(s.name)}${s.weekendExempt?'<span class="chip" title="Weekend off allowed">W</span>':''}</span>` +
          `<div class="role">${esc(s.role||'')}</div></td>`;
     days.forEach(d => {
       const k = iso(d), e = explain[k][s.id];
@@ -1045,12 +1078,12 @@ function renderReqOutcomes() {
    ============================================================ */
 function renderStaff() {
   const t = document.getElementById('staffTable');
-  t.innerHTML = `<thead><tr><th>Name</th><th>Role</th><th style="width:140px">Weekend-off eligible</th><th style="width:120px">Max days / cycle</th><th style="width:70px"></th></tr></thead><tbody>` +
+  t.innerHTML = `<thead><tr><th>Name</th><th>Role</th><th style="width:140px" title="The only way to except someone from mandatory weekend work">Weekend off allowed</th><th style="width:120px">Max days / cycle</th><th style="width:70px"></th></tr></thead><tbody>` +
     (state.staff.length ? state.staff.map(s => `
       <tr>
         <td data-label="Name"><input type="text" value="${esc(s.name)}" data-id="${s.id}" data-f="name"></td>
         <td data-label="Role"><input type="text" value="${esc(s.role||'')}" data-id="${s.id}" data-f="role" placeholder="role"></td>
-        <td data-label="Weekend-off eligible" style="text-align:center"><input type="checkbox" ${s.weekendExempt?'checked':''} data-id="${s.id}" data-f="weekendExempt"></td>
+        <td data-label="Weekend off allowed" style="text-align:center"><input type="checkbox" ${s.weekendExempt?'checked':''} data-id="${s.id}" data-f="weekendExempt"></td>
         <td data-label="Max days / cycle"><input type="number" min="1" value="${s.maxDays||''}" data-id="${s.id}" data-f="maxDays" placeholder="—"></td>
         <td data-label=""><button class="btn sm danger" data-del="${s.id}">Remove</button></td>
       </tr>`).join('') : `<tr><td colspan="5"><div class="empty">No staff yet. Add someone below.</div></td></tr>`) +
