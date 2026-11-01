@@ -18,14 +18,26 @@ const path = require('path');
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   await page.goto(url, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
+  // Client-side redirects can destroy the context mid-script; settle and retry.
+  const settle = () => page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+  await settle();
   // Scroll through so lazy / scroll-triggered content renders.
-  await page.evaluate(async () => {
-    for (let y = 0; y < document.body.scrollHeight; y += 600) {
-      window.scrollTo(0, y);
-      await new Promise((r) => setTimeout(r, 120));
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await page.evaluate(async () => {
+        for (let y = 0; y < document.body.scrollHeight; y += 600) {
+          window.scrollTo(0, y);
+          await new Promise((r) => setTimeout(r, 120));
+        }
+        window.scrollTo(0, 0);
+      });
+      break;
+    } catch (e) {
+      if (!/context was destroyed|navigation/i.test(e.message)) throw e;
+      await settle();
     }
-    window.scrollTo(0, 0);
-  });
+  }
+  console.log('Captured', page.url());
   await page.waitForTimeout(800);
   await page.screenshot({ path: path.join(outDir, 'desktop.png'), fullPage: true });
 
