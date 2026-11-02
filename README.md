@@ -2,7 +2,7 @@
 
 A fortnightly staff roster builder for a small store. Runs entirely in the browser — no server, no build step, no install. Open the page and use it.
 
-**▶ [Open the app](https://venkatesanps.github.io/staff-scheduler/)**
+**▶ [Open the app](https://venkatesanps.github.io/staff-scheduler/)** · [See how it works](https://venkatesanps.github.io/staff-scheduler/landing.html) (scroll-through tour)
 
 ## What it does
 
