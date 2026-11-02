@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Staff Scheduler · Every roster, with its reasons</title>
+<meta name="description" content="A fortnightly staff roster builder that runs in your browser and explains every decision it makes.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/zeromark/zeromark.css">
+<style>
+  /* page-specific pieces; everything else comes from assets/zeromark/zeromark.css */
+  .brand-mark svg { width: 70%; height: 70%; }
+  .topbar-cta { margin-left: auto; font: 500 14px var(--zm-font); color: var(--zm-ink); text-decoration: none; white-space: nowrap; }
+  .topbar-cta:hover { color: var(--zm-flame-dark); }
+  .sentence { display: inline-block; margin-top: 18px; padding: 10px 16px; background: var(--zm-card); border: 1px solid var(--zm-border);
+    border-radius: var(--zm-r-lg); font: 500 17px/1.8 var(--zm-font); color: var(--zm-ink); }
+  .slot { border-bottom: 2px solid currentColor; padding: 0 3px; margin: 0 1px; }
+  .slot.c1 { color: var(--zm-flame-dark); } .slot.c2 { color: var(--zm-ok); } .slot.c3 { color: var(--zm-info); } .slot.c4 { color: var(--zm-warn); }
+  .explain { display: grid; grid-template-columns: 1.3fr 1fr; gap: 40px; align-items: start; }
+  .why { display: grid; gap: 12px; }
+  .why .zm-card { display: flex; gap: 14px; padding: 16px 18px; }
+  .avatar { flex: none; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; color: #fff; font: 700 14px var(--zm-font); }
+  .who { font: 700 15px var(--zm-font); color: var(--zm-ink); }
+  .when { font: 400 11.5px var(--zm-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--zm-muted); margin-left: 8px; }
+  .what { font-size: 15px; line-height: 1.55; margin: 4px 0 0; }
+  .what em { font-style: normal; font-weight: 500; color: var(--zm-ink); }
+  .stat + .stat { margin-top: 30px; }
+  .stat .zm-figure { font-size: 64px; }
+  .stat .zm-kicker { margin-top: 6px; }
+  .duo { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .duo h3 { font: 700 21px var(--zm-font); color: var(--zm-ink); letter-spacing: -.02em; margin: 14px 0 4px; }
+  .duo p { font-size: 15px; margin: 0; }
+  .icon { width: 34px; height: 34px; border-radius: 8px; display: grid; place-items: center; }
+  .daycard { margin-top: 16px; border: 1px solid var(--zm-border); border-radius: var(--zm-r-md); padding: 12px 14px; font-size: 14px; }
+  .daycard .dh { display: flex; justify-content: space-between; font: 500 11px var(--zm-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--zm-muted); margin-bottom: 6px; }
+  .daycard .r { display: flex; justify-content: space-between; padding: 5px 0; border-top: 1px solid var(--zm-border-soft); color: var(--zm-ink); }
+  .daycard .r span:last-child { font: 400 12px var(--zm-mono); color: var(--zm-ok); }
+  .daycard .r.off span:last-child { color: var(--zm-muted); }
+  .csv { margin-top: 16px; border: 1px solid var(--zm-border); border-radius: var(--zm-r-md); padding: 12px 14px; font: 400 12px/1.8 var(--zm-mono); white-space: pre; overflow-x: auto; }
+  .csv b { font-weight: 500; color: var(--zm-ink); }
+  footer.site { max-width: 1280px; margin: 0 auto; padding: 24px 24px 56px; border-top: 1px dashed var(--zm-border); color: var(--zm-muted); font-size: 15px; }
+  footer.site nav { display: flex; flex-wrap: wrap; gap: 6px 20px; margin-top: 10px; font-size: 13.5px; }
+  footer.site a { color: var(--zm-muted); text-underline-offset: 3px; }
+  footer.site a.f { color: var(--zm-flame-dark); }
+  @media (max-width: 760px) { .explain, .duo { grid-template-columns: minmax(0, 1fr); } .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; } .stat + .stat { margin-top: 0; } .stat .zm-figure { font-size: 48px; } }
+</style>
+</head>
+<body class="zm-adopt">
+<header class="zm-topbar">
+  <a class="zm-brand" href="#top" aria-label="Staff Scheduler">
+    <span class="zm-brand-mark brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M5 7h9M5 12h14M5 17h6"/></svg></span>
+    Staff Scheduler
+  </a>
+  <a class="topbar-cta" href="index.html">Open the app →</a>
+</header>
+
+<main id="top">
+  <!-- Scene 0 · scatter: every bar is one working hour, nothing placed yet -->
+  <section class="zm-scene" id="sc-hero">
+    <div class="zm-scene-copy">
+      <div class="zm-kicker">Your <b style="font-weight:500">rules</b>, in every roster you make</div>
+      <h1 class="zm-statement" style="margin-top:14px">Every shift has a reason. <em>Now you can read it.</em></h1>
+      <p class="zm-lede">Every bar behind this text is one hour of work in a real fortnight: <span id="hoursTotal">536</span> hours, 8 people, nothing placed yet.</p>
+      <div class="zm-scroll-cue" aria-hidden="true">SCROLL</div>
+    </div>
+  </section>
+
+  <!-- Scene 1 · columns: the hours belong to people -->
+  <section class="zm-scene zm-scene--pin zm-scene--top" id="sc-people" aria-labelledby="t1">
+    <div class="zm-scene-pin"><div class="zm-scene-copy">
+      <div class="zm-kicker">01 · Who you have</div>
+      <div class="zm-figure"><span data-zm-count="8">8</span><small>people</small></div>
+      <h2 class="zm-section-title" id="t1">First, tell it who you have.</h2>
+      <p class="zm-lede">A role, a cap on working days, and one tick if they're allowed weekends off. The tick lives in one place, so there's exactly one place to look.</p>
+    </div></div>
+  </section>
+
+  <!-- Scene 2 · map: rules connect people -->
+  <section class="zm-scene zm-scene--pin zm-scene--top" id="sc-rules" aria-labelledby="t2">
+    <div class="zm-scene-pin"><div class="zm-scene-copy">
+      <div class="zm-kicker">02 · The rules</div>
+      <h2 class="zm-section-title" id="t2">Then write the rules, <em>in plain English.</em></h2>
+      <p class="zm-lede">Rules tie people together: cashiers cover cashiers, and a supervisor is always on. Hard rules never break; soft ones bend.</p>
+      <div class="sentence"><span class="slot c1">At least 1</span> <span class="slot c3">Supervisor</span> <span class="slot c2">works</span> <span class="slot c4">every day</span>.</div>
+    </div></div>
+  </section>
+
+  <!-- Scene 3 · grid: the hours land in the roster -->
+  <section class="zm-scene zm-scene--pin zm-scene--top" id="sc-roster" aria-labelledby="t3">
+    <div class="zm-scene-pin"><div class="zm-scene-copy">
+      <div class="zm-kicker">03 · The fortnight</div>
+      <div class="zm-figure"><span id="toFill" data-zm-scrub="67 0">67</span><small>shifts to fill</small></div>
+      <h2 class="zm-section-title" id="t3">Then it builds the fortnight. <em>Tuesdays stay shut.</em></h2>
+      <p class="zm-lede">Day by day: required people first, then whoever has worked least. Weekends fill to their staffing level, and the spare weekend off rotates.</p>
+    </div></div>
+  </section>
+
+  <!-- Flow · precedence tiers -->
+  <section class="zm-scene zm-scene--flow" id="sc-tiers">
+    <div class="zm-page" style="padding-top:0">
+      <div class="zm-kicker zm-reveal">04 · Precedence</div>
+      <h2 class="zm-section-title zm-reveal">Seven tiers, applied in order. <em>The order inside each is yours.</em></h2>
+      <div class="zm-card zm-reveal" style="padding:28px 16px;margin-top:20px">
+        <ol class="zm-chain" style="--zm-chain-n:7" aria-label="Rule precedence tiers">
+          <li><span class="zm-node bad">1</span><div class="zm-chain-label">Store opening</div><div class="zm-chain-sub">Is the day on at all</div></li>
+          <li><span class="zm-node bad">2</span><div class="zm-chain-label">Mandatory</div><div class="zm-chain-sub">Who must be rostered</div></li>
+          <li><span class="zm-node bad">3</span><div class="zm-chain-label">Blocks</div><div class="zm-chain-sub">Who cannot be</div></li>
+          <li><span class="zm-node bad">4</span><div class="zm-chain-label">Capacity</div><div class="zm-chain-sub">How many may work</div></li>
+          <li><span class="zm-node bad">5</span><div class="zm-chain-label">Rest</div><div class="zm-chain-sub">Days off, runs</div></li>
+          <li><span class="zm-node bad">6</span><div class="zm-chain-label">Coverage</div><div class="zm-chain-sub">Minimums pull in</div></li>
+          <li><span class="zm-node">7</span><div class="zm-chain-label">Preferences</div><div class="zm-chain-sub">Bend for any hard rule</div></li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <!-- Flow · explanations -->
+  <section class="zm-scene zm-scene--flow" id="sc-explain">
+    <div class="zm-page" style="padding-top:0">
+      <div class="zm-kicker zm-reveal">05 · Explanations</div>
+      <h2 class="zm-section-title zm-reveal">Tap any day. <em>Read why.</em></h2>
+      <p class="zm-section-lede zm-reveal">Every decision comes with a sentence in your own rule names. Tap a person for their day, or a date for the whole day.</p>
+      <div class="zm-keys zm-reveal" style="margin-bottom:28px">
+        <span class="zm-chip zm-chip--green"><b>✓</b>honoured</span><span class="zm-chip zm-chip--red"><b>!</b>overridden</span>
+        <span class="zm-chip zm-chip--blue"><b>⇅</b>preview a rule</span><span class="zm-chip zm-chip--lav"><b>★</b>urgent request</span><span class="zm-chip"><b>⤓</b>export CSV</span>
+      </div>
+      <div class="explain">
+        <div class="why zm-reveal-group">
+          <div class="zm-card"><span class="avatar" style="background:var(--zm-s2)">S</span>
+            <div><span class="who">Suganthi</span><span class="when">Fri 7 · day off</span>
+              <p class="what"><em>Requested day off, honoured.</em> Suganthi asked for this day off (family function).</p></div></div>
+          <div class="zm-card"><span class="avatar" style="background:var(--zm-flame-fill)">R</span>
+            <div><span class="who">Ravi</span><span class="when">Sat 8 · working</span>
+              <p class="what"><em>Weekend coverage.</em> Weekend work is mandatory for all staff except designated exceptions. <em>Preference overridden:</em> minimum coverage is 4.</p></div></div>
+        </div>
+        <div class="stats zm-reveal">
+          <div class="stat"><div class="zm-figure"><span data-zm-count="7">7</span><small>tiers</small></div><div class="zm-kicker">order inside each is yours</div></div>
+          <div class="stat"><div class="zm-figure"><span data-zm-count="0" data-zm-from="9">0</span><small>servers</small></div><div class="zm-kicker">it all runs in your browser</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Flow · devices -->
+  <section class="zm-scene zm-scene--flow" id="sc-devices">
+    <div class="zm-page" style="padding-top:0">
+      <div class="zm-kicker zm-reveal">06 · Anywhere</div>
+      <h2 class="zm-section-title zm-reveal">Fits the phone <em>in your pocket.</em></h2>
+      <p class="zm-section-lede zm-reveal">Day cards on a phone and a scrolling grid on a laptop. When it's settled, the roster leaves as a CSV.</p>
+      <div class="duo zm-reveal-group">
+        <div class="zm-card">
+          <span class="icon" style="background:var(--zm-ok-bg)"><svg width="16" height="20" viewBox="0 0 16 20" fill="none" stroke="currentColor" style="color:var(--zm-ok)" stroke-width="1.8"><rect x="1.5" y="1" width="13" height="18" rx="2.5"/><path d="M6 16h4"/></svg></span>
+          <h3>On a phone</h3><p>One card per day. Tap the title to explain the whole day.</p>
+          <div class="daycard"><div class="dh"><span>Sat 8</span><span>7 on</span></div>
+            <div class="r"><span>Priya</span><span>supervisor</span></div><div class="r"><span>Ravi</span><span>sales</span></div>
+            <div class="r off"><span>Arjun</span><span>weekend off · rotated</span></div></div>
+        </div>
+        <div class="zm-card">
+          <span class="icon" style="background:var(--zm-bad-bg)"><svg width="20" height="16" viewBox="0 0 20 16" fill="none" stroke="currentColor" style="color:var(--zm-flame-dark)" stroke-width="1.8"><rect x="1" y="1" width="18" height="11" rx="2"/><path d="M6 15h8"/></svg></span>
+          <h3>On a laptop</h3><p>The full fortnight at a glance, then export it as a CSV, with totals per person.</p>
+<div class="csv"><b>"Staff","Role","2 Sun","3 Mon","4 Tue",…</b>
+"Suganthi","Cashier","OFF","OFF","CLOSED",…
+"Meena","Sales","WORK","OFF","CLOSED",…
+"Arjun","Stock","WORK","WORK","CLOSED",…</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Scene · finale: the finished roster comes back behind the answer -->
+  <section class="zm-scene zm-scene--pin zm-scene--top" id="sc-end" aria-labelledby="t9">
+    <div class="zm-scene-pin"><div class="zm-scene-copy">
+      <div class="zm-figure"><span data-zm-scrub="67 0">67</span><small>unexplained</small></div>
+      <h2 class="zm-statement" id="t9" style="font-size:clamp(30px,4vw,50px)">Every shift placed. <em>Every call explained.</em></h2>
+      <p class="zm-lede">Free and open source. No account, no install, nothing uploaded. Your roster lives in your own browser.</p>
+      <a class="zm-btn zm-btn--primary" href="index.html" style="margin-top:22px">Open the scheduler →</a>
+    </div></div>
+  </section>
+</main>
+
+<footer class="site">
+  Staff Scheduler · Rules in. Roster out. Reasons included. · MIT licence
+  <nav aria-label="Footer">
+    <a href="index.html">Open the app</a>
+    <a href="https://github.com/venkatesanps/staff-scheduler">Source</a>
+    <a href="https://github.com/venkatesanps/staff-scheduler#readme">How it works</a>
+    <a class="f" href="https://github.com/venkatesanps/staff-scheduler#writing-your-own-rule">Writing a rule</a>
+    <a class="f" href="https://github.com/venkatesanps/staff-scheduler#rule-priority">Rule priority</a>
+    <a class="f" href="https://github.com/venkatesanps/staff-scheduler#data-and-privacy">Privacy</a>
+  </nav>
+</footer>
+
+<script src="assets/zeromark/zeromark-fx.js"></script>
+<script>
+(() => {
+  /* The app's demo staff and a sample fortnight (same pattern the scheduler produces for the demo rules):
+     Tuesdays shut, weekend work mandatory with one rotating weekend off, weekdays ~5 on, Suganthi's Friday request honoured. */
+  const STAFF = [['Suganthi','Cashier'],['Meena','Sales'],['Arjun','Stock'],['Priya','Supervisor'],
+                 ['Ravi','Sales'],['Kavya','Cashier'],['Deepak','Stock'],['Anitha','Supervisor']];
+  const COLORS = ['#2f6f4f','#4a76a8','#c9a063','#f0472c','#a77bd0','#57534e','#7a9e7e','#d98b6c'];
+  const DOW = ['Su','Mo','Tu','We','Th','Fr','Sa'], DAYS = 14, HOURS = 8;
+  const roster = STAFF.map((_, i) => Array.from({ length: DAYS }, (_, d) => {
+    const dow = d % 7;
+    if (dow === 2) return 's';
+    if (dow === 0 || dow === 6) return i === (d * 3) % STAFF.length ? 'o' : 'w';
+    return [0, 1, 2].includes((i + d) % STAFF.length) ? 'o' : 'w';
+  }));
+  roster[0][5] = 'o';                                   // Suganthi, Fri 7: requested day off, honoured
+  const workDays = roster.map(r => r.map((s, d) => s === 'w' ? d : -1).filter(d => d >= 0));
+  const shifts = workDays.reduce((n, w) => n + w.length, 0);
+  document.getElementById('hoursTotal').textContent = (shifts * HOURS).toLocaleString();
+  document.querySelectorAll('[data-zm-scrub="67 0"]').forEach(el => { el.setAttribute('data-zm-scrub', shifts + ' 0'); el.textContent = shifts; });
+
+  const groups = STAFF.map(([name], i) => ({ key: name, label: name, count: workDays[i].length * HOURS, color: COLORS[i] }));
+  const cells = Object.fromEntries(STAFF.map(([name], i) => [name, workDays[i]]));
+  const $ = id => document.getElementById(id);
+  const sameRole = [];
+  STAFF.forEach(([a, ra], i) => STAFF.forEach(([b, rb], j) => { if (j > i && ra === rb) sameRole.push([a, b]); }));
+  const supervisors = STAFF.filter(s => s[1] === 'Supervisor').map(s => s[0]);
+  const edges = sameRole.concat(STAFF.filter(s => s[1] !== 'Supervisor').map(s => [s[0], supervisors[STAFF.indexOf(s) % 2]]));
+  const gridScene = (el, extra) => Object.assign({ el, layout: 'grid', cols: DAYS, per: HOURS, cells, rowLabels: true,
+    colLabels: Array.from({ length: DAYS }, (_, d) => innerWidth < 760 ? DOW[d % 7][0] : DOW[d % 7] + ' ' + (d + 2)),
+    shade: [2, 9], accentCols: [0, 6, 7, 13] }, extra || {});
+
+  ZeromarkFX.stage({
+    groups, max: 1400,
+    scenes: [
+      { el: $('sc-hero'), layout: 'scatter' },
+      { el: $('sc-people'), layout: 'columns', labels: true, unit: 'h', region: { x: .06, y: .5, w: .88, h: .36 } },
+      { el: $('sc-rules'), layout: 'map', edges, region: { x: .06, y: .56, w: .88, h: .32 } },
+      gridScene($('sc-roster')),
+      { el: $('sc-tiers'), layout: 'hidden' },
+      { el: $('sc-explain'), layout: 'hidden' },
+      { el: $('sc-devices'), layout: 'hidden' },
+      gridScene($('sc-end'), { region: { x: .1, y: .58, w: .8, h: .34 } }),
+    ],
+  });
+  ZeromarkFX.init();
+})();
+</script>
+</body>
+</html>
