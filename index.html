@@ -6,10 +6,10 @@
 <title>Store Staff Scheduler</title>
 <style>
   :root{
-    --bg:#f6f7f9; --panel:#ffffff; --ink:#16181d; --muted:#6b7280; --line:#e3e6ea;
+    --bg:#f6f7f9; --panel:#ffffff; --ink:#16181d; --muted:#5c6370; --line:#e3e6ea;
     --accent:#2563eb; --accent-soft:#eff4ff;
-    --work:#0f9d58; --work-bg:#e8f5ee;
-    --off:#9aa1ab; --off-bg:#f2f3f5;
+    --work:#0b7a43; --work-bg:#e8f5ee;
+    --off:#656c78; --off-bg:#f2f3f5;
     --warn:#b45309; --warn-bg:#fef4e6;
     --bad:#c62828; --bad-bg:#fdecec;
     --radius:10px;
@@ -17,6 +17,8 @@
   *{box-sizing:border-box}
   body{margin:0;font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink)}
   button{font:inherit;cursor:pointer}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  input:focus,input:focus-within,select:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:0}
   input,select,textarea{font:inherit;color:inherit}
 
   #stickytop{position:sticky;top:0;z-index:20;background:var(--panel);box-shadow:0 1px 0 rgba(0,0,0,.03)}
@@ -25,6 +27,7 @@
     padding:10px 20px;display:flex;gap:14px;align-items:center;flex-wrap:wrap;
   }
   .brand{font-weight:650;font-size:16px;letter-spacing:-.2px;margin-right:8px}
+  .brand h1{font:inherit;margin:0}
   .brand small{display:block;font-weight:400;color:var(--muted);font-size:11px}
   .spacer{flex:1}
   .field{display:flex;flex-direction:column;gap:3px}
@@ -50,7 +53,7 @@
   .addbar{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;background:var(--accent-soft);
           border:1px solid #d7e3fb;border-radius:9px;padding:10px 12px;margin-bottom:14px}
   .addbar .field select,.addbar .field input{background:#fff}
-  .addbar .field label{color:#3b6bd4}
+  .addbar .field label{color:#2f5bbf}
   .panel p.hint{margin:0 0 14px;color:var(--muted);font-size:12.5px}
   .row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
   .split{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start}
@@ -82,10 +85,10 @@
   table.grid th.day.clickable:hover{background:var(--accent-soft)}
   .daycard .dhead b.clickable{cursor:pointer}
   .daycard .dhead b.clickable:hover{text-decoration:underline}
-  table.grid th.day.closed{background:#e7e9ed;color:#7d848d}
-  table.grid th.day.closed span{color:#8d949d;font-style:italic}
+  table.grid th.day.closed{background:#e7e9ed;color:#545a64}
+  table.grid th.day.closed span{color:#545a64;font-style:italic}
   td.cell.closed,tr.totals td.closed{
-    background:repeating-linear-gradient(45deg,#f2f3f5,#f2f3f5 3px,#e7e9ed 3px,#e7e9ed 6px);color:#9aa1ab}
+    background:repeating-linear-gradient(45deg,#f2f3f5,#f2f3f5 3px,#e7e9ed 3px,#e7e9ed 6px);color:#545a64}
   tr.totals td{background:#fbfcfd;font-weight:600;font-size:11.5px;padding:6px 0}
   tr.totals td.bad{background:var(--bad-bg);color:var(--bad)}
   .namecol .role{font-size:10.5px;color:var(--muted);font-weight:400;overflow:hidden;text-overflow:ellipsis}
@@ -127,7 +130,7 @@
   .rulecard.custom{border-left:3px solid var(--accent)}
   .rulecard .relates{margin-top:6px;font-size:11.5px;color:var(--muted);padding-left:2px}
   .rulecard .relates b{color:#4b5563;font-weight:600}
-  .rulecard .impact{margin-top:6px;font-size:11.5px;color:#3b6bd4;padding-left:2px}
+  .rulecard .impact{margin-top:6px;font-size:11.5px;color:#2f5bbf;padding-left:2px}
   .rulecard .impact.zero{color:var(--muted);font-style:italic}
   .previewbox{margin-top:10px;font-size:12px}
   .previewbox .alert{margin-bottom:0}
@@ -226,7 +229,7 @@
 
 <div id="stickytop">
 <header class="topbar">
-  <div class="brand">Staff Scheduler<small id="storeLabel">Fortnightly roster</small></div>
+  <div class="brand"><h1>Staff Scheduler</h1><small id="storeLabel">Fortnightly roster</small></div>
 
   <div class="field"><label>Month</label><input type="month" id="periodMonth"></div>
   <div class="field"><label>Cycle</label>
