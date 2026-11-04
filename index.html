@@ -170,6 +170,66 @@
   .empty{color:var(--muted);font-size:13px;padding:18px;text-align:center;background:#fafbfc;border-radius:8px}
   .hidden{display:none}
 
+  /* ---------- overview dashboard ---------- */
+  .ov{--dur-fast:150ms;--ease-out:cubic-bezier(.23,1,.32,1);--series:#2563eb;--grid:#e9ecf0}
+  .ov .kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:16px}
+  .ov .kpi{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;min-width:0}
+  .ov .kpi .lbl{font-size:12.5px;color:var(--muted);margin:0 0 6px}
+  .ov .kpi .val{font-size:28px;font-weight:650;letter-spacing:-.5px;line-height:1.1;font-variant-numeric:tabular-nums}
+  .ov .kpi .val small{font-size:15px;font-weight:550;color:var(--muted);letter-spacing:0}
+  .ov .kpi .sub{font-size:12px;color:var(--muted);margin-top:6px}
+  .ov .kpi .tag{display:inline-block;font-size:11.5px;font-weight:600;padding:1px 8px;border-radius:20px;margin-top:8px}
+  .ov .tag.good{background:var(--work-bg);color:var(--work)}
+  .ov .tag.warn{background:var(--warn-bg);color:var(--warn)}
+  .ov .tag.bad{background:var(--bad-bg);color:var(--bad)}
+  .ov .meter{height:6px;border-radius:6px;background:#dbe6fb;margin-top:10px;overflow:hidden}
+  .ov .meter i{display:block;height:100%;border-radius:6px;background:var(--series);transition:width 600ms var(--ease-out)}
+  .ov .meter.warn{background:#f6e3c4}.ov .meter.warn i{background:var(--warn)}
+  .ov .meter.bad{background:#f6d3d3}.ov .meter.bad i{background:var(--bad)}
+  .ov .cols{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:16px;align-items:start}
+  .ov .cols > *{min-width:0}
+  .ov .chart{position:relative}
+  .ov .chart svg{display:block;width:100%;height:auto;overflow:visible}
+  .ov .chart .bar{fill:var(--series);transition:opacity var(--dur-fast) var(--ease-out)}
+  .ov .chart .hit{fill:transparent;cursor:default}
+  .ov .chart .hit:focus{outline:none}
+  .ov .chart .hit:focus-visible + .bar,.ov .chart g.m:hover .bar{opacity:.75}
+  .ov .chart g.m:focus-within .hit{stroke:var(--accent);stroke-width:2}
+  .ov .chart .cap{stroke:var(--ink);stroke-width:2;stroke-linecap:round}
+  .ov .chart .under{fill:var(--bad)}
+  .ov .chart .gridl{stroke:var(--grid);stroke-width:1}
+  .ov .chart text{font-size:11px;fill:var(--muted);font-variant-numeric:tabular-nums}
+  .ov .chart text.v{fill:var(--ink);font-weight:600}
+  .ov .chart text.shut{font-style:italic}
+  .ov .tip{position:absolute;pointer-events:none;background:var(--ink);color:#fff;font-size:12px;line-height:1.4;padding:6px 9px;border-radius:7px;
+           white-space:nowrap;transform:translate(-50%,calc(-100% - 8px));opacity:0;transition:opacity var(--dur-fast) var(--ease-out);z-index:5}
+  .ov .tip.on{opacity:1}
+  .ov .legend2{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:8px}
+  .ov .legend2 i{display:inline-block;width:14px;height:10px;border-radius:2px;vertical-align:-1px;margin-right:5px;background:var(--series)}
+  .ov .legend2 i.capk{height:2px;background:var(--ink);vertical-align:3px}
+  .ov details.tv{margin-top:10px;font-size:12.5px}
+  .ov details.tv summary{cursor:pointer;color:var(--accent);font-weight:550}
+  .ov details.tv table{margin-top:8px}
+  .ov table.list td.n,.ov table.list th.n{text-align:right;font-variant-numeric:tabular-nums}
+  .ov table.list th button{all:unset;cursor:pointer;font:inherit;color:inherit;text-transform:inherit;letter-spacing:inherit}
+  .ov table.list th button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+  .ov table.list th[aria-sort] button::after{content:' ↕';opacity:.5}
+  .ov table.list th[aria-sort=ascending] button::after{content:' ↑';opacity:1}
+  .ov table.list th[aria-sort=descending] button::after{content:' ↓';opacity:1}
+  .ov table.list tbody tr:hover{background:#fafbfc}
+  .ov .tblwrap{overflow-x:auto}
+  .ov .zero{color:var(--muted)}
+  @keyframes ov-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .ov .kpi{animation:ov-in 220ms var(--ease-out) both;animation-delay:calc(var(--i,0) * 40ms)}
+  @media (prefers-reduced-motion: reduce){
+    .ov .kpi{animation:none}.ov .meter i,.ov .tip,.ov .chart .bar{transition:none}
+  }
+  body.view-tablet .ov .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  body.view-tablet .ov .cols,body.view-phone .ov .cols{grid-template-columns:minmax(0,1fr)}
+  body.view-phone .ov .kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  body.view-phone .ov .kpi{padding:12px}
+  body.view-phone .ov .kpi .val{font-size:24px}
+
   /* ============ RESPONSIVE ============
      Layout is driven by a body class (view-desktop / view-tablet / view-phone).
      In Auto mode JS sets it from the window width; the View picker forces one. */
@@ -256,6 +316,7 @@
 
 <nav class="tabs">
   <button data-tab="schedule" class="active">Schedule</button>
+  <button data-tab="overview">Overview</button>
   <button data-tab="staff">Staff <span class="count" id="cStaff">0</span></button>
   <button data-tab="rules">Rules <span class="count" id="cRules">0</span></button>
   <button data-tab="requests">Time-off requests <span class="count" id="cReq">0</span></button>
@@ -296,6 +357,15 @@
       <div class="empty">Select a cell in the grid to see the reasoning.</div>
     </div>
   </div>
+</section>
+
+<!-- ============ OVERVIEW ============ -->
+<section id="tab-overview" class="hidden ov" aria-labelledby="ovTitle">
+  <div class="panel" style="margin-bottom:16px">
+    <h2 id="ovTitle">Overview</h2>
+    <p class="hint" id="ovHint" style="margin:0">How this cycle's roster holds up: coverage, fairness, requests and which rules did the work.</p>
+  </div>
+  <div id="ovBody"></div>
 </section>
 
 <!-- ============ STAFF ============ -->
@@ -1147,6 +1217,7 @@ function renderSchedule() {
     document.getElementById('dayCards').innerHTML = `<div class="empty">Press <b>Generate schedule</b> to build the roster.</div>`;
     document.getElementById('alerts').innerHTML = '';
     document.getElementById('reqOutcomes').innerHTML = '<div class="empty">No schedule generated yet.</div>';
+    renderOverview();
     return;
   }
   const {days, schedule, explain, worked, offCount} = result;
@@ -1231,6 +1302,7 @@ function renderSchedule() {
 
   renderExplain();
   renderReqOutcomes();
+  renderOverview();
 }
 
 function renderExplain() {
@@ -1309,6 +1381,179 @@ function renderReqOutcomes() {
     return `<div class="alert ${cls}"><b>${esc(nameOf(r.staffId))}</b> — ${r.type==='off'?'day off':'wants to work'} on ${esc(pretty(parseISO(r.date)))}${r.note?` (${esc(r.note)})`:''}<br>
       <b>${o.status === 'honoured' ? 'Honoured' : 'Not honoured'}:</b> ${esc(o.reason)}</div>`;
   }).join('');
+}
+
+/* ============================================================
+   RENDER — OVERVIEW DASHBOARD
+   ============================================================ */
+let ovSort = {key:'dayCount', dir:'descending'};
+const ruleNameOf = r => (r.p && r.p.name) || (RULE_TYPES[r.type] ? RULE_TYPES[r.type].label : r.type);
+const reduceMotion = () => window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function ovMetrics() {
+  const {days, schedule, worked, dayCap, dayAlerts, globalAlerts, closedDays, reqOutcome} = result;
+  const open = days.filter(d => !closedDays[iso(d)]);
+  const minRules = state.rules.filter(r => r.enabled && r.type === 'min_per_day');
+  const perDay = days.map(d => { const k = iso(d);
+    const n = closedDays[k] ? null : schedule[k].length;
+    const minN = Math.max(0, ...minRules.filter(r => scopeMatches(r.p.scope, d)).map(r => +r.p.n));
+    const bad = !closedDays[k] && (n > dayCap[k] || (dayAlerts[k]||[]).some(a => a.level === 'bad') || (minN && n < minN));
+    return {d, k, n, cap: dayCap[k], closed: !!closedDays[k], bad, label: typeof closedDays[k] === 'string' ? closedDays[k] : 'Store closed'}; });
+  const covered = perDay.filter(x => !x.closed && !x.bad).length;
+  const reqs = state.requests.filter(r => schedule[r.date]);
+  const honoured = reqs.filter(r => (reqOutcome[r.id]||{}).status === 'honoured').length;
+  const alerts = [...globalAlerts, ...Object.values(dayAlerts).flat()];
+  const counts = state.staff.map(s => worked[s.id]);
+  const lo = counts.length ? Math.min(...counts) : 0, hi = counts.length ? Math.max(...counts) : 0;
+  const cycleMax = state.rules.find(r => r.enabled && r.type === 'max_days_per_period');
+  const people = state.staff.map(s => ({s, n: worked[s.id], cap: s.maxDays ? +s.maxDays : (cycleMax ? +cycleMax.p.n : null)}));
+  return {perDay, open: open.length, covered, reqs: reqs.length, honoured, alerts, lo, hi, people};
+}
+
+function kpiTile(i, label, valueHtml, sub, tag, meter) {
+  return `<div class="kpi" style="--i:${i}"><p class="lbl">${label}</p><div class="val">${valueHtml}</div>
+    ${meter ? `<div class="meter ${meter.cls||''}" role="img" aria-label="${esc(meter.aria)}"><i style="width:${meter.pct}%"></i></div>` : ''}
+    <div class="sub">${sub}</div>${tag ? `<span class="tag ${tag.cls}">${tag.text}</span>` : ''}</div>`;
+}
+
+function onDutyChart(perDay) {
+  const v = currentView(), W = v === 'phone' ? 340 : v === 'tablet' ? 680 : 860;
+  const H = v === 'phone' ? 190 : 240, padL = 26, padB = 34, padT = 18, plotH = H - padB - padT;
+  const maxY = Math.max(1, ...perDay.map(x => Math.max(x.n || 0, x.cap || 0)));
+  const step = (W - padL) / perDay.length, bw = Math.min(24, step * 0.56);
+  const y = v => padT + plotH - (v / maxY) * plotH;
+  let g = '';
+  const ticks = maxY <= 6 ? [...Array(maxY + 1).keys()] : [0, Math.round(maxY/2), maxY];
+  ticks.forEach(v => g += `<line class="gridl" x1="${padL}" x2="${W}" y1="${y(v)}" y2="${y(v)}"/><text x="${padL-6}" y="${y(v)+4}" text-anchor="end">${v}</text>`);
+  perDay.forEach((x, i) => {
+    const cx = padL + step * i + step / 2;
+    const lbl = `${WD[x.d.getDay()].slice(0,2)}`;
+    g += `<text x="${cx}" y="${H-18}" text-anchor="middle">${x.d.getDate()}</text><text x="${cx}" y="${H-5}" text-anchor="middle" class="${x.closed?'shut':''}">${x.closed?(step<26?'×':'shut'):(step<26?lbl[0]:lbl)}</text>`;
+    if (x.closed) return;
+    const top = y(x.n), h = Math.max(0, padT + plotH - top), r = Math.min(4, h);
+    const path = h ? `M${cx-bw/2},${padT+plotH} V${top+r} q0,-${r} ${r},-${r} H${cx+bw/2-r} q${r},0 ${r},${r} V${padT+plotH} Z` : '';
+    const tip = `${pretty(x.d)}: ${x.n} on duty, cap ${x.cap}${x.bad ? ' — needs attention' : ''}`;
+    g += `<g class="m" data-tip="${esc(tip)}" data-x="${cx}" data-y="${top}">
+      <rect class="hit" x="${cx-step/2+1}" y="${padT}" width="${step-2}" height="${plotH}" tabindex="0" role="img" aria-label="${esc(tip)}"/>
+      ${path ? `<path class="bar" d="${path}"/>` : ''}
+      <line class="cap" x1="${cx-bw/2-3}" x2="${cx+bw/2+3}" y1="${y(x.cap)}" y2="${y(x.cap)}"/>
+      ${x.bad ? `<circle class="under" cx="${cx}" cy="${padT-8}" r="4"/>` : ''}</g>`;
+  });
+  return `<div class="chart"><svg viewBox="0 0 ${W} ${H}" role="group" aria-label="Staff on duty per day, with each day's cap">${g}</svg><div class="tip" aria-hidden="true"></div></div>`;
+}
+
+function workloadChart(people) {
+  const rowH = 30, labW = 110, W = currentView() === 'phone' ? 330 : currentView() === 'tablet' ? 680 : 420, H = people.length * rowH + 6;
+  const maxX = Math.max(1, ...people.map(p => Math.max(p.n, p.cap || 0)));
+  const x = v => labW + (v / maxX) * (W - labW - 30);
+  let g = '';
+  people.forEach((p, i) => {
+    const cy = i * rowH + rowH / 2 + 3, bh = 14, w = x(p.n) - labW, r = Math.min(4, w);
+    const name = p.s.name.length > 14 ? p.s.name.slice(0, 13) + '…' : p.s.name;
+    const tip = `${p.s.name}: ${p.n} day${p.n===1?'':'s'} worked${p.cap ? `, limit ${p.cap}` : ''}`;
+    g += `<g class="m" data-tip="${esc(tip)}" data-x="${x(p.n)}" data-y="${cy-bh/2}">
+      <rect class="hit" x="0" y="${cy-rowH/2}" width="${W}" height="${rowH}" tabindex="0" role="img" aria-label="${esc(tip)}"/>
+      <text x="${labW-8}" y="${cy+4}" text-anchor="end" style="fill:var(--ink)">${esc(name)}</text>
+      ${w > 0 ? `<path class="bar" d="M${labW},${cy-bh/2} H${labW+w-r} q${r},0 ${r},${r} V${cy+bh/2-r} q0,${r} -${r},${r} H${labW} Z"/>` : ''}
+      ${p.cap ? `<line class="cap" x1="${x(p.cap)}" x2="${x(p.cap)}" y1="${cy-bh/2-3}" y2="${cy+bh/2+3}"/>` : ''}
+      <text class="v" x="${x(p.n)+6}" y="${cy+4}">${p.n}</text></g>`;
+  });
+  return `<div class="chart"><svg viewBox="0 0 ${W} ${H}" role="group" aria-label="Days worked per person this cycle, with each person's limit">${g}</svg><div class="tip" aria-hidden="true"></div></div>`;
+}
+
+function ruleImpactRows() {
+  const open = result.days.filter(d => !result.closedDays[iso(d)]).length;
+  return state.rules.filter(r => r.enabled).map(r => {
+    const i = result.impact[r.id] || {};
+    return {r, name: ruleNameOf(r), hard: r.hard, dayCount: i.dayCount || 0, forced: i.forced || 0,
+            blocked: i.blocked || 0, softened: i.softened || 0, overrode: i.overrode || 0, open};
+  });
+}
+
+function renderOverview() {
+  const body = document.getElementById('ovBody');
+  if (!body) return;
+  if (!result) {
+    body.innerHTML = `<div class="panel"><div class="empty">The overview fills in once a roster exists.<br><br>
+      <button class="btn primary" id="ovGen">Generate schedule</button></div></div>`;
+    document.getElementById('ovGen').onclick = generate;
+    return;
+  }
+  const m = ovMetrics();
+  const covPct = m.open ? Math.round(m.covered / m.open * 100) : 100;
+  const uncovered = m.open - m.covered;
+  const spread = m.hi - m.lo;
+  const reqPct = m.reqs ? Math.round(m.honoured / m.reqs * 100) : 100;
+  const bad = m.alerts.filter(a => a.level === 'bad').length, warn = m.alerts.length - bad;
+
+  const tiles = [
+    kpiTile(0, 'Days fully covered', `${m.covered}<small> / ${m.open}</small>`,
+      `${m.open} open day${m.open===1?'':'s'} this cycle`,
+      uncovered ? {cls:'bad', text:`${uncovered} day${uncovered===1?'':'s'} need attention`} : {cls:'good', text:'Every open day covered'},
+      {pct: covPct, cls: uncovered ? 'bad' : '', aria: `${covPct}% of open days covered`}),
+    kpiTile(1, 'Requests honoured', m.reqs ? `${m.honoured}<small> / ${m.reqs}</small>` : '—',
+      m.reqs ? `${m.reqs - m.honoured} could not be met` : 'No requests fall in this cycle',
+      m.reqs ? (m.honoured === m.reqs ? {cls:'good', text:'All honoured'} : {cls:'warn', text:`${reqPct}% honoured`}) : null,
+      m.reqs ? {pct: reqPct, cls: m.honoured === m.reqs ? '' : 'warn', aria: `${reqPct}% of requests honoured`} : null),
+    kpiTile(2, 'Rule alerts', `${m.alerts.length}`,
+      m.alerts.length ? `${bad} conflict${bad===1?'':'s'}, ${warn} warning${warn===1?'':'s'}` : 'All rules satisfied',
+      m.alerts.length ? {cls: bad ? 'bad' : 'warn', text: bad ? 'Conflicts to resolve' : 'Review warnings'} : {cls:'good', text:'Clean'}),
+    kpiTile(3, 'Workload spread', `${spread}<small> day${spread===1?'':'s'}</small>`,
+      `Fewest ${m.lo}, most ${m.hi} days worked`,
+      spread <= 1 ? {cls:'good', text:'Evenly shared'} : spread <= 3 ? {cls:'warn', text:'Slightly uneven'} : {cls:'bad', text:'Uneven'}),
+  ].join('');
+
+  const alertsHtml = m.alerts.length
+    ? `<div class="panel"><h2>Needs attention</h2>${m.alerts.map(a => `<div class="alert ${a.level}">${esc(a.msg)}</div>`).join('')}</div>` : '';
+
+  const sorted = ruleImpactRows().sort((a, b) => {
+    const k = ovSort.key, va = a[k], vb = b[k];
+    const c = typeof va === 'string' ? va.localeCompare(vb) : va - vb;
+    return ovSort.dir === 'ascending' ? c : -c;
+  });
+  const th = (k, label, num) => `<th class="${num?'n':''}" aria-sort="${ovSort.key===k?ovSort.dir:'none'}"><button data-sort="${k}">${label}</button></th>`;
+  const cell = (v, lab) => `<td data-label="${lab}" class="n ${v?'':'zero'}">${v || '—'}</td>`;
+  const ruleTable = `<div class="tblwrap"><table class="list"><thead><tr>
+      ${th('name','Rule')}${th('dayCount','Days acted',1)}${th('forced','Required',1)}${th('blocked','Blocked',1)}${th('softened','Softened',1)}${th('overrode','Overrode',1)}</tr></thead>
+      <tbody>${sorted.map(x => `<tr><td data-label="" style="font-weight:600">${esc(x.name)} <span class="chip" style="${x.hard?'':'background:var(--off-bg);color:var(--muted)'}">${x.hard?'hard':'soft'}</span></td>
+      <td data-label="Days acted" class="n ${x.dayCount?'':'zero'}">${x.dayCount ? `${x.dayCount} / ${x.open}` : 'no effect'}</td>${cell(x.forced,'Required')}${cell(x.blocked,'Blocked')}${cell(x.softened,'Softened')}${cell(x.overrode,'Overrode requests')}</tr>`).join('')}</tbody></table></div>`;
+
+  const dayTable = `<details class="tv"><summary>Show as table</summary><div class="tblwrap"><table class="list"><thead><tr><th>Day</th><th class="n">On duty</th><th class="n">Cap</th><th>Status</th></tr></thead><tbody>
+      ${m.perDay.map(x => `<tr><td data-label="" style="font-weight:600">${esc(pretty(x.d))}</td><td data-label="On duty" class="n">${x.closed?'—':x.n}</td><td data-label="Cap" class="n">${x.closed?'—':x.cap}</td><td data-label="Status">${x.closed?esc(x.label):(x.bad?'Needs attention':'Covered')}</td></tr>`).join('')}</tbody></table></div></details>`;
+  const peopleTable = `<details class="tv"><summary>Show as table</summary><table class="list"><thead><tr><th>Name</th><th class="n">Days worked</th><th class="n">Limit</th></tr></thead><tbody>
+      ${m.people.map(p => `<tr><td data-label="" style="font-weight:600">${esc(p.s.name)}</td><td data-label="Days worked" class="n">${p.n}</td><td data-label="Limit" class="n">${p.cap || '—'}</td></tr>`).join('')}</tbody></table></details>`;
+
+  body.innerHTML = `<div class="kpis">${tiles}</div>${alertsHtml}
+    <div class="cols">
+      <div class="panel"><h2>${uncovered ? `${uncovered} day${uncovered===1?'':'s'} short of the rules` : 'Every open day is staffed within its cap'}</h2>
+        <p class="hint">Staff on duty per day. The dark tick is the day's cap; a red dot marks a day that breaks a staffing rule.</p>
+        ${onDutyChart(m.perDay)}
+        <div class="legend2"><span><i></i>On duty</span><span><i class="capk"></i>Day's cap</span></div>${dayTable}</div>
+      <div class="panel"><h2>${spread <= 1 ? 'Shifts are shared evenly' : `Workload differs by ${spread} days`}</h2>
+        <p class="hint">Days worked per person. The dark tick is their limit.</p>
+        ${workloadChart(m.people)}${peopleTable}</div>
+    </div>
+    <div class="panel"><h2>Which rules shaped this roster</h2>
+      <p class="hint">How often each enabled rule acted this cycle. A rule with no effect is either already covered by others or never applies as set up.</p>
+      ${ruleTable}</div>`;
+
+  // tooltips: pointer and keyboard
+  body.querySelectorAll('.chart').forEach(ch => {
+    const tip = ch.querySelector('.tip'), svg = ch.querySelector('svg');
+    const show = g => { const vb = svg.viewBox.baseVal, s = svg.getBoundingClientRect().width / vb.width;
+      tip.textContent = g.dataset.tip; tip.classList.add('on');
+      const half = tip.offsetWidth / 2, cw = ch.clientWidth;
+      tip.style.left = Math.min(cw - half, Math.max(half, +g.dataset.x * s)) + 'px'; tip.style.top = (+g.dataset.y * s) + 'px'; };
+    const hide = () => tip.classList.remove('on');
+    ch.querySelectorAll('g.m').forEach(g => { g.addEventListener('pointerenter', () => show(g)); g.addEventListener('pointerleave', hide);
+      g.addEventListener('focusin', () => show(g)); g.addEventListener('focusout', hide); });
+  });
+  body.querySelectorAll('[data-sort]').forEach(b => b.onclick = () => {
+    const k = b.dataset.sort;
+    ovSort = {key: k, dir: ovSort.key === k && ovSort.dir === 'descending' ? 'ascending' : (k === 'name' && ovSort.key !== k ? 'ascending' : 'descending')};
+    renderOverview();
+    const again = document.querySelector(`#ovBody [data-sort="${k}"]`); if (again) again.focus();
+  });
 }
 
 /* ============================================================
@@ -1670,7 +1915,7 @@ function renderAll() { updateCounts(); renderStaff(); renderRules(); renderReque
 
 function showTab(tab) {
   document.querySelectorAll('nav.tabs button').forEach(x => x.classList.toggle('active', x.dataset.tab === tab));
-  ['schedule','staff','rules','requests'].forEach(t =>
+  ['schedule','overview','staff','rules','requests'].forEach(t =>
     document.getElementById('tab-' + t).classList.toggle('hidden', t !== tab));
 }
 document.querySelectorAll('nav.tabs button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
